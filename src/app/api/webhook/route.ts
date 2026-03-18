@@ -171,7 +171,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ status: 'ok' })
     }
 
-    if (cmd === '!resetar perfil' && user) {
+    if ((cmd === '!resetar perfil' || cmd === '!refazer perfil' || cmd === '!reset perfil') && user) {
       await supabase.from('users').update({
         onboarding_completed: false,
         onboarding_step: 0,

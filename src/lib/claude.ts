@@ -10,6 +10,7 @@ COMANDOS ESPECIAIS (informe o usuário quando relevante):
 • !meu perfil → ver seu perfil completo
 • !editar perfil → editar um campo do perfil
 • !resetar perfil → refazer o perfil do zero
+Se o usuário perguntar como refazer ou resetar o perfil, instrua-o a enviar: !resetar perfil
 
 
 CAPACIDADES ESPECIAIS:
