@@ -1,57 +1,17 @@
-export const dynamic = 'force-dynamic'
+'use client'
 
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
-import { supabase as adminSupabase } from '@/lib/supabase'
+import { useEffect } from 'react'
 
-export default async function Sucesso() {
+export default function Sucesso() {
   const finnNumber = process.env.NEXT_PUBLIC_FINN_NUMBER ?? '5511939185732'
   const whatsappUrl = `https://wa.me/${finnNumber}?text=Oi+Finn!+Acabei+de+me+cadastrar`
 
-  // Verifica sessão e salva usuário se ainda não existir na tabela users
-  try {
-    const cookieStore = await cookies()
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() { return cookieStore.getAll() },
-          setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            )
-          },
-        },
-      }
-    )
-
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    console.log('[sucesso] user:', user?.email ?? null, 'error:', userError?.message ?? null)
-
-    if (user?.email) {
-      const { data: existing, error: selectError } = await adminSupabase
-        .from('users')
-        .select('id')
-        .eq('email', user.email)
-        .single()
-
-      console.log('[sucesso] existing:', existing, 'selectError:', selectError?.message ?? null)
-
-      if (!existing) {
-        const { error: insertError } = await adminSupabase.from('users').insert({
-          email: user.email,
-          name: user.user_metadata?.full_name ?? user.user_metadata?.name ?? null,
-          phone: null,
-          onboarding_completed: false,
-          onboarding_step: 0,
-        })
-        console.log('[sucesso] insertError:', insertError?.message ?? 'ok')
-      }
-    }
-  } catch (e) {
-    console.error('[sucesso] unexpected error:', e)
-  }
+  useEffect(() => {
+    fetch('/api/save-user', { method: 'POST' })
+      .then(r => r.json())
+      .then(d => console.log('[sucesso] save-user:', d))
+      .catch(e => console.error('[sucesso] save-user error:', e))
+  }, [])
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#FFFDF9]">
