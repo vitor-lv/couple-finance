@@ -6,6 +6,12 @@ const getAnthropic = () => new Anthropic({
 
 const FINANCE_SYSTEM_PROMPT = `Você é o Finn, assistente financeiro de casais no WhatsApp. Você é direto, simpático e usa emojis com moderação.
 
+COMANDOS ESPECIAIS (informe o usuário quando relevante):
+• !meu perfil → ver seu perfil completo
+• !editar perfil → editar um campo do perfil
+• !resetar perfil → refazer o perfil do zero
+
+
 CAPACIDADES ESPECIAIS:
 - Você consegue ler e interpretar imagens enviadas pelo usuário
 - Quando receber uma imagem, analise automaticamente e extraia: valor, estabelecimento, data e categoria
@@ -143,6 +149,54 @@ Agora pergunte de forma natural: ${nextQuestion}.`,
   } finally {
     clearTimeout(timeout)
   }
+}
+
+export async function interpretEditValue(
+  field: string,
+  rawValue: string
+): Promise<{ value: unknown; display: string }> {
+  // Campos simples — sem Claude
+  if (field === 'nickname' || field === 'goal_description') {
+    const v = rawValue.trim()
+    return { value: v, display: v }
+  }
+  if (field === 'has_bonus') {
+    const lower = rawValue.trim().toLowerCase()
+    const yes = ['sim', 's', 'yes', 'y'].includes(lower)
+    return { value: yes, display: yes ? 'sim' : 'não' }
+  }
+  if (field === 'payment_day') {
+    const day = parseInt(rawValue.replace(/\D/g, ''), 10)
+    if (!isNaN(day) && day >= 1 && day <= 31) return { value: day, display: `dia ${day}` }
+    return { value: null, display: '' }
+  }
+
+  // Campos numéricos (monthly_income, goal_amount, fixed_expenses) — Claude interpreta linguagem natural
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 8000)
+  try {
+    const response = await getAnthropic().messages.create(
+      {
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 80,
+        system: 'Extraia um valor numérico da mensagem. Responda APENAS JSON válido: {"value": number, "display": "string formatada em reais"}',
+        messages: [{ role: 'user', content: rawValue }],
+      },
+      { signal: controller.signal }
+    )
+    const text = response.content[0].type === 'text' ? response.content[0].text : ''
+    const match = text.match(/\{[\s\S]*\}/)
+    if (match) {
+      const parsed = JSON.parse(match[0])
+      if (parsed.value) return { value: parsed.value, display: parsed.display ?? `R$ ${parsed.value}` }
+    }
+  } catch { /* fallback */ } finally {
+    clearTimeout(timeout)
+  }
+
+  const num = parseFloat(rawValue.replace(/[^\d.,]/g, '').replace(',', '.'))
+  if (!isNaN(num)) return { value: num, display: `R$ ${num.toLocaleString('pt-BR')}` }
+  return { value: null, display: '' }
 }
 
 export async function processFinanceImage(imageBase64: string, caption?: string) {

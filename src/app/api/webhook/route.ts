@@ -7,6 +7,10 @@ import {
   processOnboardingStep,
   checkCoupleComplete,
   handleCoupleComplete,
+  getEditMenu,
+  processEditChoice,
+  processEditValue,
+  formatUserProfile,
 } from '@/lib/onboarding'
 
 // Estrutura da mensagem Z-API
@@ -144,7 +148,74 @@ export async function POST(request: NextRequest) {
       .eq('phone', phone)
       .maybeSingle()
 
-    // --- ONBOARDING ---
+    const cmd = message.trim().toLowerCase()
+
+    // --- 1. COMANDOS ESPECIAIS ---
+    if (cmd === '!editar perfil') {
+      const menu = getEditMenu()
+      await supabase.from('messages').insert([
+        { phone, sender_name: senderName, role: 'user', content: message, raw_message: rawMessage },
+        { phone, sender_name: 'assistant', role: 'assistant', content: menu },
+      ])
+      await sendTextMessage(phone, menu)
+      return NextResponse.json({ status: 'ok' })
+    }
+
+    if (cmd === '!meu perfil' && user) {
+      const profile = formatUserProfile(user)
+      await supabase.from('messages').insert([
+        { phone, sender_name: senderName, role: 'user', content: message, raw_message: rawMessage },
+        { phone, sender_name: 'assistant', role: 'assistant', content: profile },
+      ])
+      await sendTextMessage(phone, profile)
+      return NextResponse.json({ status: 'ok' })
+    }
+
+    if (cmd === '!resetar perfil' && user) {
+      await supabase.from('users').update({
+        onboarding_completed: false,
+        onboarding_step: 0,
+        editing_field: null,
+        nickname: null,
+        monthly_income: null,
+        payment_day: null,
+        has_bonus: null,
+        goal_description: null,
+        goal_amount: null,
+        fixed_expenses: null,
+      }).eq('phone', phone)
+      const resetMsg = `Perfil resetado! Vamos começar do zero. 🔄\n\n` + getOnboardingMessage(0, user.name ?? '')
+      await supabase.from('messages').insert([
+        { phone, sender_name: senderName, role: 'user', content: message, raw_message: rawMessage },
+        { phone, sender_name: 'assistant', role: 'assistant', content: resetMsg },
+      ])
+      await sendTextMessage(phone, resetMsg)
+      return NextResponse.json({ status: 'ok' })
+    }
+
+    // --- 2. MODO DE EDIÇÃO ---
+    if (user?.editing_field) {
+      // Se for número de 1-7, o usuário pode estar escolhendo outro campo
+      const editChoice = await processEditChoice(phone, message.trim())
+      if (editChoice) {
+        await supabase.from('messages').insert([
+          { phone, sender_name: senderName, role: 'user', content: message, raw_message: rawMessage },
+          { phone, sender_name: 'assistant', role: 'assistant', content: editChoice },
+        ])
+        await sendTextMessage(phone, editChoice)
+        return NextResponse.json({ status: 'ok' })
+      }
+
+      const confirmation = await processEditValue(phone, message, user.editing_field)
+      await supabase.from('messages').insert([
+        { phone, sender_name: senderName, role: 'user', content: message, raw_message: rawMessage },
+        { phone, sender_name: 'assistant', role: 'assistant', content: confirmation },
+      ])
+      await sendTextMessage(phone, confirmation)
+      return NextResponse.json({ status: 'ok' })
+    }
+
+    // --- 3. ONBOARDING ---
     if (user && user.onboarding_completed === false) {
       // Se step 0 e ainda não enviamos nenhuma mensagem → manda boas-vindas sem processar a msg atual
       if (user.onboarding_step === 0) {

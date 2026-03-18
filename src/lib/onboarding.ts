@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 import { sendTextMessage, createGroup } from './zapi'
-import { generateOnboardingMessage } from './claude'
+import { generateOnboardingMessage, interpretEditValue } from './claude'
 
 interface User {
   id: string
@@ -145,6 +145,74 @@ export async function checkCoupleComplete(coupleId: string): Promise<{
 
   return { complete: true, users: users as User[], couple: couple as Couple }
 }
+
+// ─── EDIÇÃO DE PERFIL ────────────────────────────────────────────────────────
+
+const EDIT_FIELDS: Record<string, { column: string; label: string; question: string }> = {
+  '1': { column: 'nickname',         label: 'Nome (apelido)',        question: 'Qual é o seu novo apelido?' },
+  '2': { column: 'monthly_income',   label: 'Renda mensal',          question: 'Qual é a sua nova renda mensal? (ex: 6000)' },
+  '3': { column: 'payment_day',      label: 'Dia do pagamento',      question: 'Qual dia do mês você recebe? (ex: 5, 10, 25)' },
+  '4': { column: 'has_bonus',        label: 'Bônus/13º',             question: 'Você recebe bônus ou 13º anual? (sim ou não)' },
+  '5': { column: 'goal_description', label: 'Meta financeira',       question: 'Qual é a sua nova meta financeira? (ex: reserva de emergência, viagem)' },
+  '6': { column: 'goal_amount',      label: 'Valor da meta',         question: 'Qual é o novo valor da meta? (ex: 15000)' },
+  '7': { column: 'fixed_expenses',   label: 'Gastos fixos mensais',  question: 'Qual é o total dos seus gastos fixos mensais? (ex: 2500)' },
+}
+
+export function getEditMenu(): string {
+  return (
+    `O que você quer atualizar? ✏️\n\n` +
+    `1️⃣ Nome (apelido)\n` +
+    `2️⃣ Renda mensal\n` +
+    `3️⃣ Dia do pagamento\n` +
+    `4️⃣ Bônus/13º\n` +
+    `5️⃣ Meta financeira\n` +
+    `6️⃣ Valor da meta\n` +
+    `7️⃣ Gastos fixos\n\n` +
+    `Responda com o número do campo que quer editar.`
+  )
+}
+
+export async function processEditChoice(phone: string, choice: string): Promise<string | null> {
+  const field = EDIT_FIELDS[choice.trim()]
+  if (!field) return null
+  await supabase.from('users').update({ editing_field: field.column }).eq('phone', phone)
+  return field.question
+}
+
+export async function processEditValue(phone: string, rawValue: string, editingField: string): Promise<string> {
+  const fieldConfig = Object.values(EDIT_FIELDS).find(f => f.column === editingField)
+  if (!fieldConfig) {
+    await supabase.from('users').update({ editing_field: null }).eq('phone', phone)
+    return 'Campo inválido. Tente !editar perfil novamente.'
+  }
+
+  const { value, display } = await interpretEditValue(editingField, rawValue)
+
+  if (value === null) {
+    return `Não entendi o valor. ${fieldConfig.question}`
+  }
+
+  await supabase.from('users').update({ [editingField]: value, editing_field: null }).eq('phone', phone)
+  return `✅ ${fieldConfig.label} atualizado para *${display}*!`
+}
+
+export function formatUserProfile(user: User): string {
+  const bool = (v: boolean | null) => v === true ? 'sim' : v === false ? 'não' : 'não informado'
+  const money = (v: number | null) => v ? `R$ ${v.toLocaleString('pt-BR')}` : 'não informado'
+  const lines = [
+    `👤 *Seu perfil no Finn*\n`,
+    `Nome: ${user.nickname ?? user.name ?? 'não informado'}`,
+    `Renda mensal: ${money(user.monthly_income)}`,
+    `Dia do pagamento: ${user.payment_day ? `dia ${user.payment_day}` : 'não informado'}`,
+    `Bônus/13º: ${bool(user.has_bonus)}`,
+    `Meta: ${user.goal_description ?? 'não informada'}`,
+    `Valor da meta: ${money(user.goal_amount)}`,
+    `\nPara editar: *!editar perfil*`,
+  ]
+  return lines.join('\n')
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 export async function handleCoupleComplete(users: User[], couple: Couple) {
   const totalIncome = users.reduce((sum, u) => sum + (u.monthly_income ?? 0), 0)
