@@ -148,52 +148,8 @@ export async function POST(request: NextRequest) {
       .eq('phone', phone)
       .maybeSingle()
 
-    const cmd = message.trim().toLowerCase()
+    // --- 1. MODO DE EDIÇÃO (checagem antes do Claude para não interferir) ---
 
-    // --- 1. COMANDOS ESPECIAIS ---
-    if (cmd === '!editar perfil') {
-      const menu = getEditMenu()
-      await supabase.from('messages').insert([
-        { phone, sender_name: senderName, role: 'user', content: message, raw_message: rawMessage },
-        { phone, sender_name: 'assistant', role: 'assistant', content: menu },
-      ])
-      await sendTextMessage(phone, menu)
-      return NextResponse.json({ status: 'ok' })
-    }
-
-    if (cmd === '!meu perfil' && user) {
-      const profile = formatUserProfile(user)
-      await supabase.from('messages').insert([
-        { phone, sender_name: senderName, role: 'user', content: message, raw_message: rawMessage },
-        { phone, sender_name: 'assistant', role: 'assistant', content: profile },
-      ])
-      await sendTextMessage(phone, profile)
-      return NextResponse.json({ status: 'ok' })
-    }
-
-    if ((cmd === '!resetar perfil' || cmd === '!refazer perfil' || cmd === '!reset perfil') && user) {
-      await supabase.from('users').update({
-        onboarding_completed: false,
-        onboarding_step: 0,
-        editing_field: null,
-        nickname: null,
-        monthly_income: null,
-        payment_day: null,
-        has_bonus: null,
-        goal_description: null,
-        goal_amount: null,
-        fixed_expenses: null,
-      }).eq('phone', phone)
-      const resetMsg = `Perfil resetado! Vamos começar do zero. 🔄\n\n` + getOnboardingMessage(0, user.name ?? '')
-      await supabase.from('messages').insert([
-        { phone, sender_name: senderName, role: 'user', content: message, raw_message: rawMessage },
-        { phone, sender_name: 'assistant', role: 'assistant', content: resetMsg },
-      ])
-      await sendTextMessage(phone, resetMsg)
-      return NextResponse.json({ status: 'ok' })
-    }
-
-    // --- 2. MODO DE EDIÇÃO ---
     if (user?.editing_field) {
       // Se for número de 1-7, o usuário pode estar escolhendo outro campo
       const editChoice = await processEditChoice(phone, message.trim())
@@ -271,6 +227,50 @@ export async function POST(request: NextRequest) {
       .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }))
 
     const result = await processFinanceMessage(message, chatHistory)
+
+    // Ações de perfil detectadas pelo Claude via contexto
+    if (result.tipo === 'ver_perfil' && user) {
+      const profile = formatUserProfile(user)
+      await supabase.from('messages').insert([
+        { phone, sender_name: senderName, role: 'user', content: message, raw_message: rawMessage },
+        { phone, sender_name: 'assistant', role: 'assistant', content: profile },
+      ])
+      await sendTextMessage(phone, profile)
+      return NextResponse.json({ status: 'ok' })
+    }
+
+    if (result.tipo === 'editar_perfil') {
+      const menu = getEditMenu()
+      await supabase.from('messages').insert([
+        { phone, sender_name: senderName, role: 'user', content: message, raw_message: rawMessage },
+        { phone, sender_name: 'assistant', role: 'assistant', content: menu },
+      ])
+      await sendTextMessage(phone, menu)
+      return NextResponse.json({ status: 'ok' })
+    }
+
+    if (result.tipo === 'resetar_perfil' && user) {
+      await supabase.from('users').update({
+        onboarding_completed: false,
+        onboarding_step: 0,
+        editing_field: null,
+        nickname: null,
+        monthly_income: null,
+        payment_day: null,
+        has_bonus: null,
+        goal_description: null,
+        goal_amount: null,
+        fixed_expenses: null,
+      }).eq('phone', phone)
+      const resetMsg = result.resposta + '\n\n' + getOnboardingMessage(0, user.name ?? '')
+      await supabase.from('messages').insert([
+        { phone, sender_name: senderName, role: 'user', content: message, raw_message: rawMessage },
+        { phone, sender_name: 'assistant', role: 'assistant', content: resetMsg },
+      ])
+      await sendTextMessage(phone, resetMsg)
+      return NextResponse.json({ status: 'ok' })
+    }
+
     await saveAndReply(phone, senderName, message, rawMessage, result)
 
     return NextResponse.json({ status: 'ok' })
