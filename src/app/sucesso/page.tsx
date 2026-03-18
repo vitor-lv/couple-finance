@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { supabase as adminSupabase } from '@/lib/supabase'
