@@ -10,11 +10,14 @@ interface User {
   couple_id: string | null
   onboarding_step: number
   onboarding_completed: boolean
+  editing_field: string | null
   monthly_income: number | null
+  payment_day: number | null
   employment_type: string | null
   has_bonus: boolean | null
   goal_description: string | null
   goal_amount: number | null
+  fixed_expenses: number | null
 }
 
 interface Couple {
