@@ -24,27 +24,31 @@ export default async function Sucesso() {
       }
     )
 
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user }, error: userError } = await supabase.auth.getUser()
+    console.log('[sucesso] user:', user?.email ?? null, 'error:', userError?.message ?? null)
 
     if (user?.email) {
-      const { data: existing } = await adminSupabase
+      const { data: existing, error: selectError } = await adminSupabase
         .from('users')
         .select('id')
         .eq('email', user.email)
         .single()
 
+      console.log('[sucesso] existing:', existing, 'selectError:', selectError?.message ?? null)
+
       if (!existing) {
-        await adminSupabase.from('users').insert({
+        const { error: insertError } = await adminSupabase.from('users').insert({
           email: user.email,
           name: user.user_metadata?.full_name ?? user.user_metadata?.name ?? null,
           phone: null,
           onboarding_completed: false,
           onboarding_step: 0,
         })
+        console.log('[sucesso] insertError:', insertError?.message ?? 'ok')
       }
     }
-  } catch {
-    // silencia erros para não quebrar a página
+  } catch (e) {
+    console.error('[sucesso] unexpected error:', e)
   }
 
   return (
