@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
+import { supabase as adminSupabase } from '@/lib/supabase'
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url)
@@ -30,14 +31,14 @@ export async function GET(request: NextRequest) {
       const { data: { user } } = await supabase.auth.getUser()
 
       if (user?.email) {
-        const { data: existing } = await supabase
+        const { data: existing } = await adminSupabase
           .from('users')
           .select('id')
           .eq('email', user.email)
           .single()
 
         if (!existing) {
-          await supabase.from('users').insert({
+          await adminSupabase.from('users').insert({
             email: user.email,
             name: user.user_metadata?.full_name ?? user.user_metadata?.name ?? null,
             phone: null,
