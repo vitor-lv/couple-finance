@@ -27,13 +27,13 @@ export function getOnboardingMessage(step: number, userName: string): string {
   const name = userName || 'você'
   switch (step) {
     case 0:
-      return `Olá ${name}! 👋 Eu sou o Finn, seu assistente financeiro. Vamos configurar seu perfil rapidinho!\n\nComo você quer ser chamado?`
+      return `Olá ${name}! 👋 Eu sou o Finn, seu assistente financeiro pessoal.\n\nComo você quer que eu te chame?`
     case 1:
-      return `Prazer! 💰 Qual é sua renda mensal aproximada? (só o número, ex: 5000)`
+      return `Prazer! Antes de continuar, quero ser transparente: vou te fazer algumas perguntas sobre sua renda. 🔒 Essas informações ficam seguras e são usadas só para personalizar sua experiência — quanto mais você compartilhar, mais o Finn consegue te ajudar com estimativas, metas e alertas certeiros.\n\nSe sua renda for variável, sem problema — você pode me contar quanto ganhou a cada mês que passar.\n\nQual é sua renda mensal aproximada? (só o número, ex: 5000)`
     case 2:
-      return `Você é CLT, PJ ou tem renda variável?\n(responda: clt, pj ou variavel)`
+      return `Qual dia do mês você costuma receber? (ex: 5, 10, 25)`
     case 3:
-      return `Você recebe bônus anual?\n(responda: sim ou não)`
+      return `Você recebe algum bônus ou 13º anual?\n(responda: sim ou não)`
     case 4:
       return `Qual sua maior meta financeira agora?\n(ex: reserva de emergência, viagem, casa própria)`
     case 5:
@@ -68,12 +68,11 @@ export async function processOnboardingStep(
       break
     }
     case 2: {
-      if (!['clt', 'pj', 'variavel', 'variável'].includes(msg)) {
-        return `Por favor responda: clt, pj ou variavel`
+      const day = parseInt(msg.replace(/[^\d]/g, ''), 10)
+      if (isNaN(day) || day < 1 || day > 31) {
+        return `Por favor informe um dia válido entre 1 e 31. Ex: 5`
       }
-      const empType = msg === 'variável' ? 'variavel' : msg
-      updates.employment_type = empType
-      if (empType !== 'clt') nextStep = 4
+      updates.payment_day = day
       break
     }
     case 3: {
@@ -115,7 +114,7 @@ export async function processOnboardingStep(
   const savedLabels: Record<number, string> = {
     0: `apelido "${updates.nickname}"`,
     1: `renda mensal R$${updates.monthly_income}`,
-    2: `tipo de emprego "${updates.employment_type}"`,
+    2: `dia de recebimento: ${updates.payment_day}`,
     3: `bônus anual: ${updates.has_bonus ? 'sim' : 'não'}`,
     4: `meta: "${updates.goal_description}"`,
   }

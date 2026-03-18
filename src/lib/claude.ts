@@ -94,9 +94,9 @@ COMANDOS:
 }
 
 const ONBOARDING_NEXT_QUESTIONS: Record<number, string> = {
-  1: 'qual é a renda mensal aproximada (peça só o número, ex: 5000)',
-  2: 'se a pessoa é CLT, PJ ou tem renda variável (peça para responder: clt, pj ou variavel)',
-  3: 'se recebe bônus anual (peça para responder: sim ou não)',
+  1: 'qual é a renda mensal aproximada — explique brevemente que a info é segura e serve para personalizar a experiência; mencione que se a renda for variável, pode compartilhar mês a mês; peça só o número (ex: 5000)',
+  2: 'qual dia do mês costuma receber o salário ou pagamento (ex: 5, 10, 25) — explique que isso ajuda a calcular estimativas e projeções',
+  3: 'se recebe algum bônus ou 13º anual (peça para responder: sim ou não)',
   4: 'qual é a maior meta financeira agora (ex: reserva de emergência, viagem, casa própria)',
   5: 'qual o valor aproximado dessa meta (peça só o número, ex: 10000)',
 }
