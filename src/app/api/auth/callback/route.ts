@@ -33,11 +33,12 @@ export async function GET(request: NextRequest) {
       if (user?.email) {
         const { data: existing } = await adminSupabase
           .from('users')
-          .select('id')
+          .select('id, phone')
           .eq('email', user.email)
-          .single()
+          .maybeSingle()
 
         if (!existing) {
+          // Novo usuário: cria registro temporário e vai para completar cadastro
           await adminSupabase.from('users').insert({
             email: user.email,
             name: user.user_metadata?.full_name ?? user.user_metadata?.name ?? null,
@@ -45,6 +46,12 @@ export async function GET(request: NextRequest) {
             onboarding_completed: false,
             onboarding_step: 0,
           })
+          return NextResponse.redirect(`${origin}/completar-cadastro`)
+        }
+
+        // Usuário sem phone ainda não completou o cadastro
+        if (!existing.phone) {
+          return NextResponse.redirect(`${origin}/completar-cadastro`)
         }
       }
 

@@ -1,8 +1,11 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 
-export default function Sucesso() {
+function SucessoContent() {
+  const searchParams = useSearchParams()
+  const partnerName = searchParams.get('partner')
   const finnNumber = process.env.NEXT_PUBLIC_FINN_NUMBER ?? '5511939185732'
   const whatsappUrl = `https://wa.me/${finnNumber}?text=Oi+Finn!+Acabei+de+me+cadastrar`
 
@@ -16,17 +19,27 @@ export default function Sucesso() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#FFFDF9]">
       <main className="flex flex-col items-center gap-8 text-center px-6 max-w-sm">
-        <div className="w-16 h-16 rounded-full bg-[#E1F5EE] flex items-center justify-center text-3xl">
-          🐟
+        <div className="w-16 h-16 rounded-full bg-[#E1F5EE] flex items-center justify-center">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#1D9E75" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+            <polyline points="22 4 12 14.01 9 11.01"/>
+          </svg>
         </div>
 
         <div className="flex flex-col gap-2">
-          <h1 className="text-3xl font-bold tracking-tight text-[#1A1714]">
-            Bem-vindos ao Finn!
+          <h1 className="text-3xl font-bold tracking-tight text-[#1A1714]" style={{ fontFamily: 'Fraunces, serif' }}>
+            Cadastro concluído!
           </h1>
-          <p className="text-[#8A8280] text-base leading-relaxed">
-            Sua conta foi criada. Agora é só começar a conversar com o Finn no WhatsApp.
-          </p>
+          {partnerName ? (
+            <p className="text-[#8A8280] text-base leading-relaxed">
+              Você e <strong className="text-[#1A1714]">{partnerName}</strong> agora fazem parte do Finn.
+              Comece a conversar pelo WhatsApp.
+            </p>
+          ) : (
+            <p className="text-[#8A8280] text-base leading-relaxed">
+              Sua conta foi criada. Agora é só começar a conversar com o Finn no WhatsApp.
+            </p>
+          )}
         </div>
 
         <a
@@ -42,10 +55,25 @@ export default function Sucesso() {
           Falar com o Finn
         </a>
 
+        {partnerName && (
+          <p className="text-xs text-[#8A8280] bg-[#F5F0E8] rounded-xl px-4 py-3 leading-relaxed">
+            Compartilhe o número do Finn com <strong>{partnerName}</strong> para que{' '}
+            {partnerName.endsWith('a') ? 'ela' : 'ele'} também possa registrar gastos.
+          </p>
+        )}
+
         <p className="text-xs text-[#C0B8B0]">
           Dica: mande <strong className="text-[#8A8280]">g 50 mercado</strong> para registrar seu primeiro gasto
         </p>
       </main>
     </div>
+  )
+}
+
+export default function Sucesso() {
+  return (
+    <Suspense>
+      <SucessoContent />
+    </Suspense>
   )
 }

@@ -6,6 +6,7 @@ import {
   getOnboardingMessage,
   processOnboardingStep,
   checkCoupleComplete,
+  handleCoupleComplete,
 } from '@/lib/onboarding'
 
 // Estrutura da mensagem Z-API
@@ -167,26 +168,9 @@ export async function POST(request: NextRequest) {
 
       // Verifica se o casal inteiro completou o onboarding
       if (user.couple_id) {
-        const { complete, users: coupleUsers } = await checkCoupleComplete(user.couple_id)
-
-        if (complete && coupleUsers) {
-          const totalIncome = coupleUsers.reduce((sum, u) => sum + (u.monthly_income ?? 0), 0)
-          const goalUser = coupleUsers.find(u => u.goal_description) ?? coupleUsers[0]
-
-          const celebrationMsg =
-            `🎊 Vocês dois estão prontos! O Finn agora conhece o casal.\n\n` +
-            `Renda combinada do casal: R$ ${totalIncome.toLocaleString('pt-BR')}\n` +
-            `Meta: ${goalUser.goal_description} (R$ ${(goalUser.goal_amount ?? 0).toLocaleString('pt-BR')})\n\n` +
-            `Agora é só usar:\n` +
-            `• g 50 mercado → registrar gasto\n` +
-            `• ? resumo → ver seus gastos\n` +
-            `• ? meta → ver progresso da meta 💑`
-
-          for (const u of coupleUsers) {
-            if (u.phone) {
-              await sendTextMessage(u.phone, celebrationMsg)
-            }
-          }
+        const { complete, users: coupleUsers, couple } = await checkCoupleComplete(user.couple_id)
+        if (complete && coupleUsers && couple) {
+          await handleCoupleComplete(coupleUsers, couple)
         }
       }
 

@@ -2,11 +2,16 @@
 
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase-browser'
+import PhoneInput, { isValidPhoneNumber } from 'react-phone-number-input'
+import 'react-phone-number-input/style.css'
 
 export default function Home() {
   const [loading, setLoading] = useState(false)
   const [formLoading, setFormLoading] = useState(false)
-  const [form, setForm] = useState({ name: '', phone: '', partnerName: '', partnerPhone: '', email: '' })
+  const [form, setForm] = useState({ name: '', email: '' })
+  const [phone, setPhone] = useState<string>('')
+  const [partnerName, setPartnerName] = useState('')
+  const [partnerPhone, setPartnerPhone] = useState<string>('')
   const [error, setError] = useState('')
 
   const handleGoogleLogin = async () => {
@@ -21,13 +26,23 @@ export default function Home() {
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+
+    if (!isValidPhoneNumber(phone || '')) {
+      setError('Número de telefone inválido')
+      return
+    }
+    if (!isValidPhoneNumber(partnerPhone || '')) {
+      setError('Número do parceiro(a) inválido')
+      return
+    }
+
     setFormLoading(true)
 
     try {
       const res = await fetch('/api/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, phone, partnerName, partnerPhone }),
       })
 
       const data = await res.json()
@@ -95,16 +110,16 @@ export default function Home() {
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-[#8A8280] font-medium" htmlFor="phone">seu WhatsApp</label>
-            <input
-              id="phone"
-              type="tel"
-              placeholder="(11) 99999-9999"
-              value={form.phone}
-              onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
-              required
-              className="bg-white border border-[#E8E0D5] rounded-xl px-4 py-3 text-sm text-[#1A1714] outline-none focus:border-[#D85A30] transition-colors placeholder:text-[#D0C8C0]"
-            />
+            <label className="text-xs text-[#8A8280] font-medium">seu WhatsApp</label>
+            <div className="bg-white border border-[#E8E0D5] rounded-xl px-4 py-2.5 focus-within:border-[#D85A30] transition-colors">
+              <PhoneInput
+                international
+                defaultCountry="BR"
+                value={phone}
+                onChange={(v) => setPhone(v ?? '')}
+                className="phone-input"
+              />
+            </div>
           </div>
 
           <div className="h-px bg-[#E8E0D5]" />
@@ -115,24 +130,24 @@ export default function Home() {
               id="partnerName"
               type="text"
               placeholder="Maria"
-              value={form.partnerName}
-              onChange={e => setForm(f => ({ ...f, partnerName: e.target.value }))}
+              value={partnerName}
+              onChange={e => setPartnerName(e.target.value)}
               required
               className="bg-white border border-[#E8E0D5] rounded-xl px-4 py-3 text-sm text-[#1A1714] outline-none focus:border-[#D85A30] transition-colors placeholder:text-[#D0C8C0]"
             />
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-[#8A8280] font-medium" htmlFor="partnerPhone">WhatsApp do parceiro(a)</label>
-            <input
-              id="partnerPhone"
-              type="tel"
-              placeholder="(11) 99999-9999"
-              value={form.partnerPhone}
-              onChange={e => setForm(f => ({ ...f, partnerPhone: e.target.value }))}
-              required
-              className="bg-white border border-[#E8E0D5] rounded-xl px-4 py-3 text-sm text-[#1A1714] outline-none focus:border-[#D85A30] transition-colors placeholder:text-[#D0C8C0]"
-            />
+            <label className="text-xs text-[#8A8280] font-medium">WhatsApp do parceiro(a)</label>
+            <div className="bg-white border border-[#E8E0D5] rounded-xl px-4 py-2.5 focus-within:border-[#D85A30] transition-colors">
+              <PhoneInput
+                international
+                defaultCountry="BR"
+                value={partnerPhone}
+                onChange={(v) => setPartnerPhone(v ?? '')}
+                className="phone-input"
+              />
+            </div>
           </div>
 
           <div className="h-px bg-[#E8E0D5]" />
@@ -167,6 +182,38 @@ export default function Home() {
           <p className="text-xs text-[#C0B8B0] text-center">sem cartão de crédito</p>
         </form>
       </main>
+
+      <style jsx global>{`
+        .phone-input {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .phone-input .PhoneInputCountry {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+        }
+        .phone-input .PhoneInputCountrySelect {
+          background: transparent;
+          border: none;
+          outline: none;
+          font-size: 13px;
+          color: #8A8280;
+          cursor: pointer;
+        }
+        .phone-input .PhoneInputInput {
+          background: transparent;
+          border: none;
+          outline: none;
+          font-size: 14px;
+          color: #1A1714;
+          width: 100%;
+        }
+        .phone-input .PhoneInputInput::placeholder {
+          color: #D0C8C0;
+        }
+      `}</style>
     </div>
   )
 }

@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { sendTextMessage, createGroup } from './zapi'
 
 interface User {
   id: string
@@ -13,6 +14,12 @@ interface User {
   has_bonus: boolean | null
   goal_description: string | null
   goal_amount: number | null
+}
+
+interface Couple {
+  id: string
+  chat_mode: string | null
+  group_id: string | null
 }
 
 export function getOnboardingMessage(step: number, userName: string): string {
@@ -48,7 +55,6 @@ export async function processOnboardingStep(
 
   switch (step) {
     case 0: {
-      // Salva nickname como veio (preserva capitalização original)
       updates.nickname = message.trim()
       break
     }
@@ -66,10 +72,7 @@ export async function processOnboardingStep(
       }
       const empType = msg === 'variável' ? 'variavel' : msg
       updates.employment_type = empType
-      // CLT avança para step 3 (bônus), PJ/variável pula para step 4
-      if (empType !== 'clt') {
-        nextStep = 4
-      }
+      if (empType !== 'clt') nextStep = 4
       break
     }
     case 3: {
@@ -99,14 +102,12 @@ export async function processOnboardingStep(
   }
 
   updates.onboarding_step = nextStep
-
   await supabase.from('users').update(updates).eq('phone', phone)
 
   if (updates.onboarding_completed) {
-    return `Perfeito! Seu perfil está completo. 🎉\n\nAguardando seu parceiro(a) terminar o cadastro também...`
+    return `Perfeito! Seu perfil está completo. 🎉\n\nAguardando seu parceiro(a) terminar o cadastro...`
   }
 
-  // Retorna a próxima pergunta, usando nickname se já foi salvo
   const displayName = (updates.nickname as string) ?? user.nickname ?? user.name ?? ''
   return getOnboardingMessage(nextStep, displayName)
 }
@@ -114,16 +115,50 @@ export async function processOnboardingStep(
 export async function checkCoupleComplete(coupleId: string): Promise<{
   complete: boolean
   users?: User[]
+  couple?: Couple
 }> {
-  const { data } = await supabase
-    .from('users')
-    .select('*')
-    .eq('couple_id', coupleId)
+  const [{ data: users }, { data: couple }] = await Promise.all([
+    supabase.from('users').select('*').eq('couple_id', coupleId),
+    supabase.from('couples').select('id, chat_mode, group_id').eq('id', coupleId).maybeSingle(),
+  ])
 
-  if (!data || data.length < 2) return { complete: false }
+  if (!users || users.length < 2 || !couple) return { complete: false }
 
-  const allComplete = data.every((u: User) => u.onboarding_completed === true)
+  const allComplete = users.every((u: User) => u.onboarding_completed === true)
   if (!allComplete) return { complete: false }
 
-  return { complete: true, users: data as User[] }
+  return { complete: true, users: users as User[], couple: couple as Couple }
+}
+
+export async function handleCoupleComplete(users: User[], couple: Couple) {
+  const totalIncome = users.reduce((sum, u) => sum + (u.monthly_income ?? 0), 0)
+  const goalUser = users.find(u => u.goal_description) ?? users[0]
+
+  const celebrationMsg =
+    `🎊 Vocês dois estão prontos! O Finn agora conhece o casal.\n\n` +
+    `Renda combinada: R$ ${totalIncome.toLocaleString('pt-BR')}\n` +
+    `Meta: ${goalUser.goal_description} (R$ ${(goalUser.goal_amount ?? 0).toLocaleString('pt-BR')})\n\n` +
+    `Agora é só usar:\n` +
+    `• g 50 mercado → registrar gasto\n` +
+    `• ? resumo → ver seus gastos\n` +
+    `• ? meta → ver progresso da meta 💑`
+
+  if (couple.chat_mode === 'group') {
+    const phones = users.map(u => u.phone).filter(Boolean)
+    const groupId = await createGroup('Finn 💑', phones)
+
+    if (groupId) {
+      await supabase.from('couples').update({ group_id: groupId }).eq('id', couple.id)
+      await sendTextMessage(groupId, celebrationMsg)
+    } else {
+      // Fallback: individual se criação do grupo falhar
+      for (const u of users) {
+        if (u.phone) await sendTextMessage(u.phone, celebrationMsg)
+      }
+    }
+  } else {
+    for (const u of users) {
+      if (u.phone) await sendTextMessage(u.phone, celebrationMsg)
+    }
+  }
 }
