@@ -1,6 +1,51 @@
-export default function Sucesso() {
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
+import { supabase as adminSupabase } from '@/lib/supabase'
+
+export default async function Sucesso() {
   const finnNumber = process.env.NEXT_PUBLIC_FINN_NUMBER ?? '5511939185732'
   const whatsappUrl = `https://wa.me/${finnNumber}?text=Oi+Finn!+Acabei+de+me+cadastrar`
+
+  // Verifica sessão e salva usuário se ainda não existir na tabela users
+  try {
+    const cookieStore = await cookies()
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() { return cookieStore.getAll() },
+          setAll(cookiesToSet) {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            )
+          },
+        },
+      }
+    )
+
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (user?.email) {
+      const { data: existing } = await adminSupabase
+        .from('users')
+        .select('id')
+        .eq('email', user.email)
+        .single()
+
+      if (!existing) {
+        await adminSupabase.from('users').insert({
+          email: user.email,
+          name: user.user_metadata?.full_name ?? user.user_metadata?.name ?? null,
+          phone: null,
+          onboarding_completed: false,
+          onboarding_step: 0,
+        })
+      }
+    }
+  } catch {
+    // silencia erros para não quebrar a página
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#FFFDF9]">
