@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { sendTextMessage, createGroup } from './zapi'
+import { generateOnboardingMessage } from './claude'
 
 interface User {
   id: string
@@ -109,7 +110,23 @@ export async function processOnboardingStep(
   }
 
   const displayName = (updates.nickname as string) ?? user.nickname ?? user.name ?? ''
-  return getOnboardingMessage(nextStep, displayName)
+
+  // Monta o label do que foi salvo para dar contexto ao Claude
+  const savedLabels: Record<number, string> = {
+    0: `apelido "${updates.nickname}"`,
+    1: `renda mensal R$${updates.monthly_income}`,
+    2: `tipo de emprego "${updates.employment_type}"`,
+    3: `bônus anual: ${updates.has_bonus ? 'sim' : 'não'}`,
+    4: `meta: "${updates.goal_description}"`,
+  }
+
+  const claudeMsg = await generateOnboardingMessage(nextStep, {
+    userName: displayName,
+    justAnswered: message.trim(),
+    savedLabel: savedLabels[step] ?? '',
+  })
+
+  return claudeMsg || getOnboardingMessage(nextStep, displayName)
 }
 
 export async function checkCoupleComplete(coupleId: string): Promise<{

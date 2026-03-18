@@ -146,15 +146,23 @@ export async function POST(request: NextRequest) {
 
     // --- ONBOARDING ---
     if (user && user.onboarding_completed === false) {
-      // Primeira mensagem: envia a pergunta do step atual sem processar a resposta
-      if (user.onboarding_step === 0 && message.trim().toLowerCase() === 'oi finn! acabei de me cadastrar') {
-        const welcomeMsg = getOnboardingMessage(0, user.name ?? '')
-        await supabase.from('messages').insert([
-          { phone, sender_name: senderName, role: 'user', content: message, raw_message: rawMessage },
-          { phone, sender_name: 'assistant', role: 'assistant', content: welcomeMsg },
-        ])
-        await sendTextMessage(phone, welcomeMsg)
-        return NextResponse.json({ status: 'ok' })
+      // Se step 0 e ainda não enviamos nenhuma mensagem → manda boas-vindas sem processar a msg atual
+      if (user.onboarding_step === 0) {
+        const { count: msgCount } = await supabase
+          .from('messages')
+          .select('*', { count: 'exact', head: true })
+          .eq('phone', phone)
+          .eq('role', 'assistant')
+
+        if ((msgCount ?? 0) === 0) {
+          const welcomeMsg = getOnboardingMessage(0, user.name ?? '')
+          await supabase.from('messages').insert([
+            { phone, sender_name: senderName, role: 'user', content: message, raw_message: rawMessage },
+            { phone, sender_name: 'assistant', role: 'assistant', content: welcomeMsg },
+          ])
+          await sendTextMessage(phone, welcomeMsg)
+          return NextResponse.json({ status: 'ok' })
+        }
       }
 
       // Processa a resposta do step atual e retorna próxima pergunta

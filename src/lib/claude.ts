@@ -93,6 +93,58 @@ COMANDOS:
   }
 }
 
+const ONBOARDING_NEXT_QUESTIONS: Record<number, string> = {
+  1: 'qual é a renda mensal aproximada (peça só o número, ex: 5000)',
+  2: 'se a pessoa é CLT, PJ ou tem renda variável (peça para responder: clt, pj ou variavel)',
+  3: 'se recebe bônus anual (peça para responder: sim ou não)',
+  4: 'qual é a maior meta financeira agora (ex: reserva de emergência, viagem, casa própria)',
+  5: 'qual o valor aproximado dessa meta (peça só o número, ex: 10000)',
+}
+
+export async function generateOnboardingMessage(
+  nextStep: number,
+  context: {
+    userName: string
+    justAnswered: string
+    savedLabel: string
+  }
+): Promise<string> {
+  const nextQuestion = ONBOARDING_NEXT_QUESTIONS[nextStep]
+  if (!nextQuestion) return ''
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 8000)
+
+  try {
+    const response = await getAnthropic().messages.create(
+      {
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 150,
+        system: `Você é o Finn, assistente financeiro de casais no WhatsApp.
+Você está fazendo o onboarding de um novo usuário.
+Seja caloroso, casual e direto. Máximo 2 linhas.
+Use emojis com moderação (máx 1).
+Responda APENAS com a mensagem, sem markdown, sem explicações extras.`,
+        messages: [
+          {
+            role: 'user',
+            content: `O usuário se chama ${context.userName} e acabou de responder: "${context.justAnswered}" (salvei como: ${context.savedLabel}).
+Agora pergunte de forma natural: ${nextQuestion}.`,
+          },
+        ],
+      },
+      { signal: controller.signal }
+    )
+
+    const text = response.content[0].type === 'text' ? response.content[0].text.trim() : ''
+    return text || ''
+  } catch {
+    return ''
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
 export async function processFinanceImage(imageBase64: string, caption?: string) {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 15000)
