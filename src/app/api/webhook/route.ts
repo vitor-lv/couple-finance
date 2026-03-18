@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { processFinanceMessage, processFinanceImage } from '@/lib/claude'
 import { sendTextMessage, sendTyping } from '@/lib/zapi'
+import {
+  getOnboardingMessage,
+  processOnboardingStep,
+  checkCoupleComplete,
+} from '@/lib/onboarding'
 
 // Estrutura da mensagem Z-API
 interface ZAPIMessage {
@@ -126,10 +131,69 @@ export async function POST(request: NextRequest) {
 
     const message = body.text.message
 
-    // Limite de tamanho da mensagem (médio)
+    // Limite de tamanho da mensagem
     if (message.length > 1000) {
       return NextResponse.json({ status: 'ignored' })
     }
+
+    // Busca o user pelo phone
+    const { data: user } = await supabase
+      .from('users')
+      .select('*')
+      .eq('phone', phone)
+      .maybeSingle()
+
+    // --- ONBOARDING ---
+    if (user && user.onboarding_completed === false) {
+      // Primeira mensagem: envia a pergunta do step atual sem processar a resposta
+      if (user.onboarding_step === 0 && message.trim().toLowerCase() === 'oi finn! acabei de me cadastrar') {
+        const welcomeMsg = getOnboardingMessage(0, user.name ?? '')
+        await supabase.from('messages').insert([
+          { phone, sender_name: senderName, role: 'user', content: message, raw_message: rawMessage },
+          { phone, sender_name: 'assistant', role: 'assistant', content: welcomeMsg },
+        ])
+        await sendTextMessage(phone, welcomeMsg)
+        return NextResponse.json({ status: 'ok' })
+      }
+
+      // Processa a resposta do step atual e retorna próxima pergunta
+      const nextMessage = await processOnboardingStep(phone, message, user)
+
+      await supabase.from('messages').insert([
+        { phone, sender_name: senderName, role: 'user', content: message, raw_message: rawMessage },
+        { phone, sender_name: 'assistant', role: 'assistant', content: nextMessage },
+      ])
+      await sendTextMessage(phone, nextMessage)
+
+      // Verifica se o casal inteiro completou o onboarding
+      if (user.couple_id) {
+        const { complete, users: coupleUsers } = await checkCoupleComplete(user.couple_id)
+
+        if (complete && coupleUsers) {
+          const totalIncome = coupleUsers.reduce((sum, u) => sum + (u.monthly_income ?? 0), 0)
+          const goalUser = coupleUsers.find(u => u.goal_description) ?? coupleUsers[0]
+
+          const celebrationMsg =
+            `🎊 Vocês dois estão prontos! O Finn agora conhece o casal.\n\n` +
+            `Renda combinada do casal: R$ ${totalIncome.toLocaleString('pt-BR')}\n` +
+            `Meta: ${goalUser.goal_description} (R$ ${(goalUser.goal_amount ?? 0).toLocaleString('pt-BR')})\n\n` +
+            `Agora é só usar:\n` +
+            `• g 50 mercado → registrar gasto\n` +
+            `• ? resumo → ver seus gastos\n` +
+            `• ? meta → ver progresso da meta 💑`
+
+          for (const u of coupleUsers) {
+            if (u.phone) {
+              await sendTextMessage(u.phone, celebrationMsg)
+            }
+          }
+        }
+      }
+
+      return NextResponse.json({ status: 'ok' })
+    }
+
+    // --- FLUXO NORMAL (onboarding completo ou user não encontrado) ---
 
     // Buscar histórico recente da conversa (últimas 10 mensagens)
     const { data: history } = await supabase
