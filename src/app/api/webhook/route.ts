@@ -66,11 +66,15 @@ async function saveAndReply(
     await supabase.from('transactions').insert({
       phone,
       sender_name: senderName,
-      tipo: result.tipo,
-      valor: result.valor,
+      tipo:      result.tipo,
+      valor:     result.valor,
       categoria: result.categoria,
       descricao: result.descricao,
-      data: result.data ?? new Date().toISOString().split('T')[0],
+      data:      result.data ?? new Date().toISOString().split('T')[0],
+      // espelha nas colunas do schema original
+      amount:      result.valor,
+      category:    result.categoria,
+      description: result.descricao,
     })
   }
 
