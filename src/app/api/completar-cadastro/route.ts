@@ -54,10 +54,17 @@ export async function POST(request: NextRequest) {
       .eq('email', user.email!)
       .is('phone', null)
 
+    // Fallback para name: Google metadata → parte do email
+    const userName =
+      user.user_metadata?.full_name ??
+      user.user_metadata?.name ??
+      user.email?.split('@')[0] ??
+      'Usuário'
+
     // Cria os 2 usuários
     const { error: usersError } = await adminSupabase.from('users').insert([
       {
-        name: user.user_metadata?.full_name ?? user.user_metadata?.name ?? null,
+        name: userName,
         email: user.email,
         phone: cleanPhone,
         couple_id: couple.id,

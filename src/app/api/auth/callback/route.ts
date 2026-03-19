@@ -38,14 +38,25 @@ export async function GET(request: NextRequest) {
           .maybeSingle()
 
         if (!existing) {
-          // Novo usuário: cria registro temporário e vai para completar cadastro
-          await adminSupabase.from('users').insert({
+          // Fallback para name: Google metadata → parte do email
+          const name =
+            user.user_metadata?.full_name ??
+            user.user_metadata?.name ??
+            user.email.split('@')[0]
+
+          const { error: insertError } = await adminSupabase.from('users').insert({
             email: user.email,
-            name: user.user_metadata?.full_name ?? user.user_metadata?.name ?? null,
+            name,
             phone: null,
             onboarding_completed: false,
             onboarding_step: 0,
           })
+
+          if (insertError) {
+            console.error('callback insert error:', insertError.message)
+            return NextResponse.redirect(`${origin}/?error=auth`)
+          }
+
           return NextResponse.redirect(`${origin}/completar-cadastro`)
         }
 
