@@ -1,5 +1,15 @@
 -- ============================================================
 -- COUPLE FINANCE — Schema consolidado
+-- ============================================================
+-- RESET COMPLETO (descomente só se quiser apagar tudo e recriar):
+-- DROP TABLE IF EXISTS transactions;
+-- DROP TABLE IF EXISTS messages;
+-- DROP TABLE IF EXISTS users;
+-- DROP TABLE IF EXISTS couples;
+-- ============================================================
+
+-- ============================================================
+-- COUPLE FINANCE — Schema consolidado
 -- Atualizado em: 2026-03-18 (validado contra information_schema)
 -- Banco: Supabase (PostgreSQL)
 -- ============================================================
