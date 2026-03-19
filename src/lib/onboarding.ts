@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 import { sendTextMessage, createGroup } from './zapi'
-import { generateOnboardingMessage, interpretEditValue } from './claude'
+import { generateOnboardingMessage, interpretEditValue, interpretCoupleChoice } from './claude'
 
 interface User {
   id: string
@@ -8,6 +8,8 @@ interface User {
   name: string | null
   nickname: string | null
   couple_id: string | null
+  chat_mode: string | null
+  group_id: string | null
   onboarding_step: number
   onboarding_completed: boolean
   editing_field: string | null
@@ -29,8 +31,12 @@ interface Couple {
 export function getOnboardingMessage(step: number, userName: string): string {
   const name = userName || 'você'
   switch (step) {
+    case -1:
+      return `Olá ${name}! 👋 Eu sou o Finn, seu assistente financeiro para casais.\n\nQuer fazer o cadastro sozinho agora e compartilhar meu contato depois, ou prefere chamar seu parceiro(a) para fazermos juntos?\n\n(responda: *sozinho* ou *casal*)`
+    case -2:
+      return `Ótimo! 💑 Qual é o número do WhatsApp do seu parceiro(a)?\n(só os números, ex: 11999999999)`
     case 0:
-      return `Olá ${name}! 👋 Eu sou o Finn, seu assistente financeiro pessoal.\n\nComo você quer que eu te chame?`
+      return `Como você quer que eu te chame?`
     case 1:
       return `Prazer! Antes de continuar, quero ser transparente: vou te fazer algumas perguntas sobre sua renda. 🔒 Essas informações ficam seguras e são usadas só para personalizar sua experiência — quanto mais você compartilhar, mais o Finn consegue te ajudar com estimativas, metas e alertas certeiros.\n\nSe sua renda for variável, sem problema — você pode me contar quanto ganhou a cada mês que passar.\n\nQual é sua renda mensal aproximada? (só o número, ex: 5000)`
     case 2:
@@ -58,6 +64,93 @@ export async function processOnboardingStep(
   let nextStep = step + 1
 
   switch (step) {
+    case -1: {
+      // Interpreta "sozinho" ou "casal" com Claude
+      const choice = await interpretCoupleChoice(message)
+      if (choice === 'casal') {
+        updates.onboarding_step = -2
+        nextStep = -2
+      } else {
+        updates.onboarding_step = 0
+        nextStep = 0
+      }
+      await supabase.from('users').update(updates).eq('phone', phone)
+      return getOnboardingMessage(nextStep, user.name ?? '')
+    }
+
+    case -2: {
+      // Recebe o telefone do parceiro, cria casal e grupo
+      const partnerPhone = message.replace(/\D/g, '')
+      if (partnerPhone.length < 10 || partnerPhone.length > 13) {
+        return `Por favor, me informe um número válido com DDD.\n(ex: 11999999999)`
+      }
+
+      // Cria o casal
+      const { data: couple, error: coupleError } = await supabase
+        .from('couples')
+        .insert({ chat_mode: 'group' })
+        .select()
+        .single()
+
+      if (coupleError || !couple) {
+        return `Ops, tive um problema ao criar o grupo. Tente novamente.`
+      }
+
+      // Cria grupo no WhatsApp
+      const groupId = await createGroup('Finn 💑', [phone, partnerPhone])
+
+      // Atualiza o casal com o group_id
+      if (groupId) {
+        await supabase.from('couples').update({ group_id: groupId }).eq('id', couple.id)
+      }
+
+      // Atualiza usuário atual
+      await supabase.from('users').update({
+        couple_id: couple.id,
+        chat_mode: 'group',
+        group_id: groupId,
+        onboarding_step: 0,
+      }).eq('phone', phone)
+
+      // Verifica se o parceiro já existe no banco
+      const { data: partnerUser } = await supabase
+        .from('users')
+        .select('*')
+        .eq('phone', partnerPhone)
+        .maybeSingle()
+
+      if (partnerUser) {
+        // Parceiro já cadastrado — vincula ao casal
+        await supabase.from('users').update({
+          couple_id: couple.id,
+          chat_mode: 'group',
+          group_id: groupId,
+        }).eq('phone', partnerPhone)
+      } else {
+        // Parceiro não cadastrado — cria registro para ele
+        await supabase.from('users').insert({
+          phone: partnerPhone,
+          couple_id: couple.id,
+          chat_mode: 'group',
+          group_id: groupId,
+          onboarding_step: 0,
+          onboarding_completed: false,
+        })
+      }
+
+      // Envia boas-vindas no grupo
+      if (groupId) {
+        const groupWelcome =
+          `Oi! 💑 Criei esse grupo para fazermos o cadastro de vocês dois juntos.\n\n` +
+          `Vou fazer algumas perguntas para cada um. Pode ser?\n\n` +
+          `Vou começar com ${user.name ?? 'você'}: ${getOnboardingMessage(0, user.name ?? '')}`
+        await sendTextMessage(groupId, groupWelcome)
+        return `Grupo criado! Continue o cadastro por lá 👆`
+      }
+
+      return getOnboardingMessage(0, user.name ?? '')
+    }
+
     case 0: {
       updates.nickname = message.trim()
       break

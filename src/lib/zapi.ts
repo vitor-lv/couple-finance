@@ -39,7 +39,7 @@ export async function createGroup(name: string, phones: string[]): Promise<strin
     const response = await fetch(`${BASE_URL}/create-group`, {
       method: 'POST',
       headers: ZAPI_HEADERS,
-      body: JSON.stringify({ groupName: name, phones }),
+      body: JSON.stringify({ autoInvite: true, groupName: name, phones }),
       signal: controller.signal,
     })
     if (!response.ok) {
@@ -52,6 +52,29 @@ export async function createGroup(name: string, phones: string[]): Promise<strin
   } catch (e) {
     console.error('Create group fetch error:', e instanceof Error ? e.message : e)
     return null
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+export async function addParticipant(groupId: string, phones: string[]): Promise<boolean> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 15000)
+  try {
+    const response = await fetch(`${BASE_URL}/add-participant`, {
+      method: 'POST',
+      headers: ZAPI_HEADERS,
+      body: JSON.stringify({ autoInvite: true, groupId, phones }),
+      signal: controller.signal,
+    })
+    if (!response.ok) {
+      console.error('Add participant error:', response.status, await response.text())
+      return false
+    }
+    return true
+  } catch (e) {
+    console.error('Add participant error:', e instanceof Error ? e.message : e)
+    return false
   } finally {
     clearTimeout(timeout)
   }

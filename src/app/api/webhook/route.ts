@@ -20,6 +20,8 @@ interface ZAPIMessage {
   momentsAgo: boolean
   keyId: string
   senderName: string
+  isGroup?: boolean
+  participantPhone?: string
   text?: {
     message: string
   }
@@ -90,30 +92,34 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ status: 'ignored' })
     }
 
-    const phone = body.phone
+    // Grupo: phone = groupId, participantPhone = quem enviou
+    const isGroup = body.isGroup === true
+    const groupId = isGroup ? body.phone : null
+    const userPhone = isGroup ? (body.participantPhone ?? body.phone) : body.phone
+    const replyTo = isGroup ? body.phone : body.phone // sempre reply para o "phone" do body
     const senderName = body.senderName
-    const rawMessage = { phone: body.phone, type: body.type, keyId: body.keyId }
+    const rawMessage = { phone: userPhone, type: body.type, keyId: body.keyId }
 
-    // Rate limiting: máx 20 mensagens por minuto por número
+    // Rate limiting por número individual (não pelo grupo)
     const oneMinuteAgo = new Date(Date.now() - 60_000).toISOString()
     const { count } = await supabase
       .from('messages')
       .select('*', { count: 'exact', head: true })
-      .eq('phone', phone)
+      .eq('phone', userPhone)
       .eq('role', 'user')
       .gte('created_at', oneMinuteAgo)
 
     if ((count ?? 0) >= 20) {
-      console.error(`Rate limit atingido para ${phone}: ${count} msgs/min`)
+      console.error(`Rate limit atingido para ${userPhone}: ${count} msgs/min`)
       return NextResponse.json({ status: 'rate_limited' })
     }
 
     // Feedback visual de digitando
-    await sendTyping(phone)
+    await sendTyping(replyTo)
 
     // Processar imagem
     if (body.type === 'ReceivedCallback' && body.image?.imageUrl) {
-      await sendTextMessage(phone, '🔍 Analisando sua imagem...')
+      await sendTextMessage(replyTo, '🔍 Analisando sua imagem...')
 
       const imageResponse = await fetch(body.image.imageUrl)
       if (!imageResponse.ok) {
@@ -124,7 +130,7 @@ export async function POST(request: NextRequest) {
       const imageBase64 = Buffer.from(imageBuffer).toString('base64')
 
       const result = await processFinanceImage(imageBase64, body.image.caption)
-      await saveAndReply(phone, senderName, body.image.caption || '[imagem]', rawMessage, result)
+      await saveAndReply(replyTo, senderName, body.image.caption || '[imagem]', rawMessage, result)
 
       return NextResponse.json({ status: 'ok' })
     }
@@ -141,12 +147,86 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ status: 'ignored' })
     }
 
-    // Busca o user pelo phone
-    const { data: user } = await supabase
+    // Busca o user pelo telefone individual (não pelo groupId)
+    let { data: user } = await supabase
       .from('users')
       .select('*')
-      .eq('phone', phone)
+      .eq('phone', userPhone)
       .maybeSingle()
+
+    // ── USUÁRIO NÃO CADASTRADO ─────────────────────────────────────────────────
+    if (!user) {
+      if (isGroup && groupId) {
+        // Fluxo C: parceiro entra no grupo sem cadastro
+        const { data: coupleData } = await supabase
+          .from('couples')
+          .select('*')
+          .eq('group_id', groupId)
+          .maybeSingle()
+
+        if (coupleData) {
+          // Busca o outro membro do casal para saber o nome
+          const { data: existingPartner } = await supabase
+            .from('users')
+            .select('nickname, name')
+            .eq('couple_id', coupleData.id)
+            .neq('phone', userPhone)
+            .maybeSingle()
+
+          // Cria o novo usuário vinculado ao casal
+          await supabase.from('users').insert({
+            phone: userPhone,
+            name: senderName,
+            couple_id: coupleData.id,
+            chat_mode: 'group',
+            group_id: groupId,
+            onboarding_step: 0,
+            onboarding_completed: false,
+          })
+
+          const { data: newUser } = await supabase.from('users').select('*').eq('phone', userPhone).maybeSingle()
+          user = newUser
+
+          const partnerName = existingPartner?.nickname ?? existingPartner?.name ?? 'seu parceiro(a)'
+          const welcomeMsg =
+            `Oi ${senderName}! 👋 Vejo que você está no grupo com *${partnerName}*.\n\n` +
+            getOnboardingMessage(0, senderName)
+
+          await supabase.from('messages').insert([
+            { phone: userPhone, sender_name: senderName, role: 'user', content: message, raw_message: rawMessage },
+            { phone: userPhone, sender_name: 'assistant', role: 'assistant', content: welcomeMsg },
+          ])
+          await sendTextMessage(replyTo, welcomeMsg)
+          return NextResponse.json({ status: 'ok' })
+        }
+        // Grupo desconhecido — ignora
+        return NextResponse.json({ status: 'ignored' })
+      } else {
+        // Fluxo B: usuário novo, mensagem individual — inicia onboarding do zero
+        await supabase.from('users').insert({
+          phone: userPhone,
+          name: senderName,
+          onboarding_step: -1,
+          onboarding_completed: false,
+          chat_mode: 'individual',
+        })
+
+        const { data: newUser } = await supabase.from('users').select('*').eq('phone', userPhone).maybeSingle()
+        user = newUser
+
+        const welcomeMsg = getOnboardingMessage(-1, senderName)
+        await supabase.from('messages').insert([
+          { phone: userPhone, sender_name: senderName, role: 'user', content: message, raw_message: rawMessage },
+          { phone: userPhone, sender_name: 'assistant', role: 'assistant', content: welcomeMsg },
+        ])
+        await sendTextMessage(replyTo, welcomeMsg)
+        return NextResponse.json({ status: 'ok' })
+      }
+    }
+    // ──────────────────────────────────────────────────────────────────────────
+
+    // A partir daqui, user existe. Usa o userPhone para operações de DB
+    const phone = userPhone
 
     // --- 1. MODO DE EDIÇÃO (checagem antes do Claude para não interferir) ---
 
@@ -158,7 +238,7 @@ export async function POST(request: NextRequest) {
           { phone, sender_name: senderName, role: 'user', content: message, raw_message: rawMessage },
           { phone, sender_name: 'assistant', role: 'assistant', content: editChoice },
         ])
-        await sendTextMessage(phone, editChoice)
+        await sendTextMessage(replyTo, editChoice)
         return NextResponse.json({ status: 'ok' })
       }
 
@@ -167,13 +247,13 @@ export async function POST(request: NextRequest) {
         { phone, sender_name: senderName, role: 'user', content: message, raw_message: rawMessage },
         { phone, sender_name: 'assistant', role: 'assistant', content: confirmation },
       ])
-      await sendTextMessage(phone, confirmation)
+      await sendTextMessage(replyTo, confirmation)
       return NextResponse.json({ status: 'ok' })
     }
 
-    // --- 3. ONBOARDING ---
+    // --- 2. ONBOARDING ---
     if (user && user.onboarding_completed === false) {
-      // Se step 0 e ainda não enviamos nenhuma mensagem → manda boas-vindas sem processar a msg atual
+      // Primeira mensagem de alguém cadastrado via web (step 0, sem histórico) → boas-vindas
       if (user.onboarding_step === 0) {
         const { count: msgCount } = await supabase
           .from('messages')
@@ -187,7 +267,7 @@ export async function POST(request: NextRequest) {
             { phone, sender_name: senderName, role: 'user', content: message, raw_message: rawMessage },
             { phone, sender_name: 'assistant', role: 'assistant', content: welcomeMsg },
           ])
-          await sendTextMessage(phone, welcomeMsg)
+          await sendTextMessage(replyTo, welcomeMsg)
           return NextResponse.json({ status: 'ok' })
         }
       }
@@ -199,7 +279,9 @@ export async function POST(request: NextRequest) {
         { phone, sender_name: senderName, role: 'user', content: message, raw_message: rawMessage },
         { phone, sender_name: 'assistant', role: 'assistant', content: nextMessage },
       ])
-      await sendTextMessage(phone, nextMessage)
+      // Se estiver em grupo, responde no grupo; senão, no individual
+      const onboardingReplyTo = user.group_id ?? replyTo
+      await sendTextMessage(onboardingReplyTo, nextMessage)
 
       // Verifica se o casal inteiro completou o onboarding
       if (user.couple_id) {
@@ -212,9 +294,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ status: 'ok' })
     }
 
-    // --- FLUXO NORMAL (onboarding completo ou user não encontrado) ---
+    // --- FLUXO NORMAL (onboarding completo) ---
 
-    // Buscar histórico recente da conversa (últimas 10 mensagens)
     const { data: history } = await supabase
       .from('messages')
       .select('role, content')
@@ -235,7 +316,7 @@ export async function POST(request: NextRequest) {
         { phone, sender_name: senderName, role: 'user', content: message, raw_message: rawMessage },
         { phone, sender_name: 'assistant', role: 'assistant', content: profile },
       ])
-      await sendTextMessage(phone, profile)
+      await sendTextMessage(replyTo, profile)
       return NextResponse.json({ status: 'ok' })
     }
 
@@ -245,7 +326,7 @@ export async function POST(request: NextRequest) {
         { phone, sender_name: senderName, role: 'user', content: message, raw_message: rawMessage },
         { phone, sender_name: 'assistant', role: 'assistant', content: menu },
       ])
-      await sendTextMessage(phone, menu)
+      await sendTextMessage(replyTo, menu)
       return NextResponse.json({ status: 'ok' })
     }
 
@@ -267,11 +348,11 @@ export async function POST(request: NextRequest) {
         { phone, sender_name: senderName, role: 'user', content: message, raw_message: rawMessage },
         { phone, sender_name: 'assistant', role: 'assistant', content: resetMsg },
       ])
-      await sendTextMessage(phone, resetMsg)
+      await sendTextMessage(replyTo, resetMsg)
       return NextResponse.json({ status: 'ok' })
     }
 
-    await saveAndReply(phone, senderName, message, rawMessage, result)
+    await saveAndReply(replyTo, senderName, message, rawMessage, result)
 
     return NextResponse.json({ status: 'ok' })
   } catch (error) {

@@ -151,6 +151,31 @@ Agora pergunte de forma natural: ${nextQuestion}.`,
   }
 }
 
+export async function interpretCoupleChoice(message: string): Promise<'sozinho' | 'casal'> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 6000)
+  try {
+    const response = await getAnthropic().messages.create(
+      {
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 10,
+        system: 'O usuário responde se quer fazer o cadastro sozinho ou junto com o parceiro(a). Responda APENAS "sozinho" ou "casal".',
+        messages: [{ role: 'user', content: message }],
+      },
+      { signal: controller.signal }
+    )
+    const text = response.content[0].type === 'text' ? response.content[0].text.trim().toLowerCase() : ''
+    return text.includes('casal') ? 'casal' : 'sozinho'
+  } catch {
+    // Fallback: keywords
+    const lower = message.trim().toLowerCase()
+    const coupleWords = ['casal', 'junto', 'juntos', 'esposa', 'esposo', 'marido', 'mulher', 'namorad', 'companheiro', 'companheira', 'parceiro', 'parceira', 'dois', 'nós']
+    return coupleWords.some(k => lower.includes(k)) ? 'casal' : 'sozinho'
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
 export async function interpretEditValue(
   field: string,
   rawValue: string
