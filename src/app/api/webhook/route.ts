@@ -1,19 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
-import { processFinanceMessage, processFinanceImage } from '@/lib/claude'
+import { processFinanceMessage, processFinanceImage, transcribeAudio } from '@/lib/claude'
 import { sendTextMessage, sendTyping } from '@/lib/zapi'
 import {
-  getOnboardingMessage,
+  getWelcomeMessage,
   processOnboardingStep,
-  checkCoupleComplete,
-  handleCoupleComplete,
   getEditMenu,
   processEditChoice,
   processEditValue,
   formatUserProfile,
 } from '@/lib/onboarding'
 
-// Estrutura da mensagem Z-API
 interface ZAPIMessage {
   phone: string
   fromMe: boolean
@@ -22,13 +19,9 @@ interface ZAPIMessage {
   senderName: string
   isGroup?: boolean
   participantPhone?: string
-  text?: {
-    message: string
-  }
-  image?: {
-    imageUrl: string
-    caption?: string
-  }
+  text?: { message: string }
+  image?: { imageUrl: string; caption?: string }
+  audio?: { audioUrl: string; seconds?: number }
   type: string
   chatName: string
 }
@@ -66,12 +59,11 @@ async function saveAndReply(
     await supabase.from('transactions').insert({
       phone,
       sender_name: senderName,
-      tipo:      result.tipo,
-      valor:     result.valor,
-      categoria: result.categoria,
-      descricao: result.descricao,
-      data:      result.data ?? new Date().toISOString().split('T')[0],
-      // espelha nas colunas do schema original
+      tipo:        result.tipo,
+      valor:       result.valor,
+      categoria:   result.categoria,
+      descricao:   result.descricao,
+      data:        result.data ?? new Date().toISOString().split('T')[0],
       amount:      result.valor,
       category:    result.categoria,
       description: result.descricao,
@@ -83,7 +75,6 @@ async function saveAndReply(
 
 export async function POST(request: NextRequest) {
   try {
-    // Validação do token Z-API (crítico)
     const zapiToken = request.headers.get('z-api-token')
     if (zapiToken !== process.env.ZAPI_TOKEN) {
       return NextResponse.json({ status: 'unauthorized' }, { status: 401 })
@@ -91,20 +82,18 @@ export async function POST(request: NextRequest) {
 
     const body: ZAPIMessage = await request.json()
 
-    // Ignorar mensagens enviadas pelo próprio bot
     if (body.fromMe) {
       return NextResponse.json({ status: 'ignored' })
     }
 
-    // Grupo: phone = groupId, participantPhone = quem enviou
     const isGroup = body.isGroup === true
     const groupId = isGroup ? body.phone : null
     const userPhone = isGroup ? (body.participantPhone ?? body.phone) : body.phone
-    const replyTo = isGroup ? body.phone : body.phone // sempre reply para o "phone" do body
+    const replyTo = body.phone // sempre responde para o chat (grupo ou individual)
     const senderName = body.senderName
     const rawMessage = { phone: userPhone, type: body.type, keyId: body.keyId }
 
-    // Rate limiting por número individual (não pelo grupo)
+    // Rate limiting por número individual
     const oneMinuteAgo = new Date(Date.now() - 60_000).toISOString()
     const { count } = await supabase
       .from('messages')
@@ -114,54 +103,54 @@ export async function POST(request: NextRequest) {
       .gte('created_at', oneMinuteAgo)
 
     if ((count ?? 0) >= 20) {
-      console.error(`Rate limit atingido para ${userPhone}: ${count} msgs/min`)
       return NextResponse.json({ status: 'rate_limited' })
     }
 
-    // Feedback visual de digitando
     await sendTyping(replyTo)
 
-    // Processar imagem
+    // ── Processar imagem ──────────────────────────────────────────────────────
     if (body.type === 'ReceivedCallback' && body.image?.imageUrl) {
       await sendTextMessage(replyTo, '🔍 Analisando sua imagem...')
-
       const imageResponse = await fetch(body.image.imageUrl)
       if (!imageResponse.ok) {
-        return NextResponse.json({ status: 'error', message: 'Failed to fetch image' }, { status: 500 })
+        return NextResponse.json({ status: 'error' }, { status: 500 })
       }
-
-      const imageBuffer = await imageResponse.arrayBuffer()
-      const imageBase64 = Buffer.from(imageBuffer).toString('base64')
-
+      const imageBase64 = Buffer.from(await imageResponse.arrayBuffer()).toString('base64')
       const result = await processFinanceImage(imageBase64, body.image.caption)
       await saveAndReply(replyTo, senderName, body.image.caption || '[imagem]', rawMessage, result)
-
       return NextResponse.json({ status: 'ok' })
     }
 
-    // Processar texto
+    // ── Processar áudio ───────────────────────────────────────────────────────
+    if (body.type === 'ReceivedCallback' && body.audio?.audioUrl) {
+      const transcribed = await transcribeAudio(body.audio.audioUrl)
+      if (!transcribed) {
+        await sendTextMessage(replyTo, '🎙️ Não consegui entender o áudio. Pode digitar sua mensagem?')
+        return NextResponse.json({ status: 'ok' })
+      }
+      body.text = { message: transcribed }
+    }
+
     if (body.type !== 'ReceivedCallback' || !body.text?.message) {
       return NextResponse.json({ status: 'ignored' })
     }
 
     const message = body.text.message
-
-    // Limite de tamanho da mensagem
     if (message.length > 1000) {
       return NextResponse.json({ status: 'ignored' })
     }
 
-    // Busca o user pelo telefone individual (não pelo groupId)
+    // ── Busca usuário ─────────────────────────────────────────────────────────
     let { data: user } = await supabase
       .from('users')
       .select('*')
       .eq('phone', userPhone)
       .maybeSingle()
 
-    // ── USUÁRIO NÃO CADASTRADO ─────────────────────────────────────────────────
+    // ── Usuário não cadastrado ────────────────────────────────────────────────
     if (!user) {
       if (isGroup && groupId) {
-        // Fluxo C: parceiro entra no grupo sem cadastro
+        // Parceiro entra no grupo sem cadastro
         const { data: coupleData } = await supabase
           .from('couples')
           .select('*')
@@ -169,7 +158,6 @@ export async function POST(request: NextRequest) {
           .maybeSingle()
 
         if (coupleData) {
-          // Busca o outro membro do casal para saber o nome
           const { data: existingPartner } = await supabase
             .from('users')
             .select('nickname, name')
@@ -177,14 +165,13 @@ export async function POST(request: NextRequest) {
             .neq('phone', userPhone)
             .maybeSingle()
 
-          // Cria o novo usuário vinculado ao casal
           await supabase.from('users').insert({
             phone: userPhone,
             name: senderName,
             couple_id: coupleData.id,
             chat_mode: 'group',
             group_id: groupId,
-            onboarding_step: 0,
+            onboarding_step: -1,
             onboarding_completed: false,
           })
 
@@ -194,8 +181,9 @@ export async function POST(request: NextRequest) {
           const partnerName = existingPartner?.nickname ?? existingPartner?.name ?? 'seu parceiro(a)'
           const welcomeMsg =
             `Oi ${senderName}! 👋 Vejo que você está no grupo com *${partnerName}*.\n\n` +
-            getOnboardingMessage(0, senderName)
+            getWelcomeMessage(senderName, true)
 
+          await supabase.from('users').update({ onboarding_step: 0 }).eq('phone', userPhone)
           await supabase.from('messages').insert([
             { phone: userPhone, sender_name: senderName, role: 'user', content: message, raw_message: rawMessage },
             { phone: userPhone, sender_name: 'assistant', role: 'assistant', content: welcomeMsg },
@@ -203,10 +191,9 @@ export async function POST(request: NextRequest) {
           await sendTextMessage(replyTo, welcomeMsg)
           return NextResponse.json({ status: 'ok' })
         }
-        // Grupo desconhecido — ignora
         return NextResponse.json({ status: 'ignored' })
       } else {
-        // Fluxo B: usuário novo, mensagem individual — inicia onboarding do zero
+        // Usuário novo, mensagem individual
         await supabase.from('users').insert({
           phone: userPhone,
           name: senderName,
@@ -214,28 +201,21 @@ export async function POST(request: NextRequest) {
           onboarding_completed: false,
           chat_mode: 'individual',
         })
-
         const { data: newUser } = await supabase.from('users').select('*').eq('phone', userPhone).maybeSingle()
         user = newUser
-
-        const welcomeMsg = getOnboardingMessage(-1, senderName)
-        await supabase.from('messages').insert([
-          { phone: userPhone, sender_name: senderName, role: 'user', content: message, raw_message: rawMessage },
-          { phone: userPhone, sender_name: 'assistant', role: 'assistant', content: welcomeMsg },
-        ])
-        await sendTextMessage(replyTo, welcomeMsg)
-        return NextResponse.json({ status: 'ok' })
       }
     }
-    // ──────────────────────────────────────────────────────────────────────────
 
-    // A partir daqui, user existe. Usa o userPhone para operações de DB
+    if (!user) return NextResponse.json({ status: 'error' })
+
     const phone = userPhone
 
-    // --- 1. MODO DE EDIÇÃO (checagem antes do Claude para não interferir) ---
+    // ════════════════════════════════════════════════════════════════════════
+    // ORDEM: 1. Edição | 2. Onboarding | 3. Fluxo normal
+    // ════════════════════════════════════════════════════════════════════════
 
-    if (user?.editing_field) {
-      // Se for número de 1-7, o usuário pode estar escolhendo outro campo
+    // ── 1. MODO DE EDIÇÃO ─────────────────────────────────────────────────────
+    if (user.editing_field) {
       const editChoice = await processEditChoice(phone, message.trim())
       if (editChoice) {
         await supabase.from('messages').insert([
@@ -255,54 +235,34 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ status: 'ok' })
     }
 
-    // --- 2. ONBOARDING ---
-    if (user && user.onboarding_completed === false) {
-      // Se está no step 0 e ainda não tem nickname → verifica se já enviamos a pergunta
-      if (user.onboarding_step === 0 && !user.nickname) {
-        const { count: assistantCount } = await supabase
-          .from('messages')
-          .select('*', { count: 'exact', head: true })
-          .eq('phone', phone)
-          .eq('role', 'assistant')
-
-        if ((assistantCount ?? 0) === 0) {
-          // Nenhuma mensagem enviada ainda (cadastro novo) → envia a pergunta do nome
-          const welcomeMsg = getOnboardingMessage(0, user.name ?? '', !!user.couple_id)
-          await supabase.from('messages').insert([
-            { phone, sender_name: senderName, role: 'user', content: message, raw_message: rawMessage },
-            { phone, sender_name: 'assistant', role: 'assistant', content: welcomeMsg },
-          ])
-          await sendTextMessage(replyTo, welcomeMsg)
-          return NextResponse.json({ status: 'ok' })
-        }
-        // Já existe mensagem do assistente (pergunta já foi feita, ex: após reset) →
-        // cai no processOnboardingStep abaixo para salvar o nickname
+    // ── 2. ONBOARDING ─────────────────────────────────────────────────────────
+    if (user.onboarding_completed === false) {
+      // Step -1: primeira vez → envia boas-vindas + pergunta de apelido
+      if (user.onboarding_step === -1) {
+        const welcomeMsg = getWelcomeMessage(user.name ?? senderName, !!user.couple_id)
+        await supabase.from('users').update({ onboarding_step: 0 }).eq('phone', phone)
+        await supabase.from('messages').insert([
+          { phone, sender_name: senderName, role: 'user', content: message, raw_message: rawMessage },
+          { phone, sender_name: 'assistant', role: 'assistant', content: welcomeMsg },
+        ])
+        await sendTextMessage(replyTo, welcomeMsg)
+        return NextResponse.json({ status: 'ok' })
       }
 
-      // Processa a resposta do step atual e retorna próxima pergunta
+      // Steps 0-3: processa resposta do usuário
       const nextMessage = await processOnboardingStep(phone, message, user)
 
       await supabase.from('messages').insert([
         { phone, sender_name: senderName, role: 'user', content: message, raw_message: rawMessage },
         { phone, sender_name: 'assistant', role: 'assistant', content: nextMessage },
       ])
-      // Se estiver em grupo, responde no grupo; senão, no individual
+
       const onboardingReplyTo = user.group_id ?? replyTo
       await sendTextMessage(onboardingReplyTo, nextMessage)
-
-      // Verifica se o casal inteiro completou o onboarding
-      if (user.couple_id) {
-        const { complete, users: coupleUsers, couple } = await checkCoupleComplete(user.couple_id)
-        if (complete && coupleUsers && couple) {
-          await handleCoupleComplete(coupleUsers, couple)
-        }
-      }
-
       return NextResponse.json({ status: 'ok' })
     }
 
-    // --- FLUXO NORMAL (onboarding completo) ---
-
+    // ── 3. FLUXO NORMAL ───────────────────────────────────────────────────────
     const { data: history } = await supabase
       .from('messages')
       .select('role, content')
@@ -314,10 +274,14 @@ export async function POST(request: NextRequest) {
       .reverse()
       .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }))
 
-    const result = await processFinanceMessage(message, chatHistory)
+    const result = await processFinanceMessage(message, chatHistory, {
+      senderName,
+      coupleGoal: user.goal_description ?? undefined,
+      coupleGoalAmount: user.goal_amount ?? undefined,
+    })
 
-    // Ações de perfil detectadas pelo Claude via contexto
-    if (result.tipo === 'ver_perfil' && user) {
+    // Ações de perfil detectadas pelo Claude
+    if (result.tipo === 'ver_perfil') {
       const profile = formatUserProfile(user)
       await supabase.from('messages').insert([
         { phone, sender_name: senderName, role: 'user', content: message, raw_message: rawMessage },
@@ -337,10 +301,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ status: 'ok' })
     }
 
-    if (result.tipo === 'resetar_perfil' && user) {
+    if (result.tipo === 'resetar_perfil') {
       await supabase.from('users').update({
         onboarding_completed: false,
-        onboarding_step: 0,
+        onboarding_step: -1,
         editing_field: null,
         nickname: null,
         monthly_income: null,
@@ -348,19 +312,28 @@ export async function POST(request: NextRequest) {
         has_bonus: null,
         goal_description: null,
         goal_amount: null,
+        employment_type: null,
         fixed_expenses: null,
       }).eq('phone', phone)
-      const resetMsg = result.resposta + '\n\n' + getOnboardingMessage(0, user.name ?? '')
+
+      const resetMsg = result.resposta
+      const welcomeMsg = getWelcomeMessage(user.name ?? senderName, !!user.couple_id)
+      await supabase.from('users').update({ onboarding_step: 0 }).eq('phone', phone)
+
+      const fullMsg = `${resetMsg}\n\n${welcomeMsg}`
       await supabase.from('messages').insert([
         { phone, sender_name: senderName, role: 'user', content: message, raw_message: rawMessage },
-        { phone, sender_name: 'assistant', role: 'assistant', content: resetMsg },
+        { phone, sender_name: 'assistant', role: 'assistant', content: fullMsg },
       ])
-      await sendTextMessage(replyTo, resetMsg)
+      await sendTextMessage(replyTo, fullMsg)
       return NextResponse.json({ status: 'ok' })
     }
 
-    await saveAndReply(replyTo, senderName, message, rawMessage, result)
+    if (result.tipo === 'salvar_renda' && result.valor) {
+      await supabase.from('users').update({ monthly_income: result.valor }).eq('phone', phone)
+    }
 
+    await saveAndReply(replyTo, senderName, message, rawMessage, result)
     return NextResponse.json({ status: 'ok' })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error'
@@ -369,7 +342,6 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Z-API também faz GET para validar o webhook
 export async function GET() {
   return NextResponse.json({ status: 'ok', service: 'couple-finance webhook' })
 }

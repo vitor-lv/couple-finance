@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
         email: email ?? null,
         phone: cleanPhone,
         onboarding_completed: false,
-        onboarding_step: 0,
+        onboarding_step: -1,
       })
 
       if (userError) {
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
         phone: cleanPhone,
         couple_id: couple.id,
         onboarding_completed: false,
-        onboarding_step: 0,
+        onboarding_step: -1,
       },
       {
         name: partnerName,
@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
         phone: cleanPartnerPhone,
         couple_id: couple.id,
         onboarding_completed: false,
-        onboarding_step: 0,
+        onboarding_step: -1,
       },
     ])
 
