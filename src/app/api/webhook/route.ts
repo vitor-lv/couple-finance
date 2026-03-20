@@ -257,23 +257,15 @@ export async function POST(request: NextRequest) {
 
     // --- 2. ONBOARDING ---
     if (user && user.onboarding_completed === false) {
-      // Primeira mensagem de alguém cadastrado via web (step 0, sem histórico) → boas-vindas
-      if (user.onboarding_step === 0) {
-        const { count: msgCount } = await supabase
-          .from('messages')
-          .select('*', { count: 'exact', head: true })
-          .eq('phone', phone)
-          .eq('role', 'assistant')
-
-        if ((msgCount ?? 0) === 0) {
-          const welcomeMsg = getOnboardingMessage(0, user.name ?? '')
-          await supabase.from('messages').insert([
-            { phone, sender_name: senderName, role: 'user', content: message, raw_message: rawMessage },
-            { phone, sender_name: 'assistant', role: 'assistant', content: welcomeMsg },
-          ])
-          await sendTextMessage(replyTo, welcomeMsg)
-          return NextResponse.json({ status: 'ok' })
-        }
+      // Se está no step 0 e ainda não tem nickname → pergunta o nome antes de processar
+      if (user.onboarding_step === 0 && !user.nickname) {
+        const welcomeMsg = getOnboardingMessage(0, user.name ?? '')
+        await supabase.from('messages').insert([
+          { phone, sender_name: senderName, role: 'user', content: message, raw_message: rawMessage },
+          { phone, sender_name: 'assistant', role: 'assistant', content: welcomeMsg },
+        ])
+        await sendTextMessage(replyTo, welcomeMsg)
+        return NextResponse.json({ status: 'ok' })
       }
 
       // Processa a resposta do step atual e retorna próxima pergunta
