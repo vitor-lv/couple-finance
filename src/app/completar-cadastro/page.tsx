@@ -19,6 +19,7 @@ export default function CompletarCadastro() {
   const [error, setError] = useState('')
   const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null)
   const [userEmail, setUserEmail] = useState('')
+  const [email, setEmail] = useState('')
 
   useEffect(() => {
     const checkSession = async () => {
@@ -27,6 +28,7 @@ export default function CompletarCadastro() {
       setIsLoggedIn(!!session)
       if (session?.user) {
         setUserEmail(session.user.email ?? '')
+        setEmail(session.user.email ?? '')
         const googleName =
           session.user.user_metadata?.full_name ??
           session.user.user_metadata?.name ?? ''
@@ -197,6 +199,18 @@ export default function CompletarCadastro() {
                   placeholder="Como você quer ser chamado?"
                   value={name}
                   onChange={e => setName(e.target.value)}
+                  required
+                  className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-green-500 transition-colors placeholder:text-gray-600"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs text-gray-400">e-mail</label>
+                <input
+                  type="email"
+                  placeholder="seu@email.com"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
                   required
                   className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-green-500 transition-colors placeholder:text-gray-600"
                 />
