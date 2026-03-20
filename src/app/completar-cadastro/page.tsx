@@ -51,11 +51,11 @@ export default function CompletarCadastro() {
         return
       }
 
-      if (mode === 'individual') {
-        router.push('/sucesso')
-      } else {
-        router.push(`/sucesso?partner=${encodeURIComponent(partnerName)}`)
-      }
+      const destination = mode === 'individual'
+        ? '/sucesso'
+        : `/sucesso?partner=${encodeURIComponent(partnerName)}`
+
+      router.push(destination)
     } catch {
       setError('Erro de conexão. Tente novamente.')
     } finally {

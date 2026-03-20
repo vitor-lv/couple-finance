@@ -16,6 +16,17 @@ export async function POST(request: NextRequest) {
     const cleanPhone = phone.replace(/\D/g, '')
     const userName = name.trim()
 
+    // Verifica se já existe usuário com esse telefone ou email
+    const { data: existing } = await adminSupabase
+      .from('users')
+      .select('id, phone')
+      .or(`phone.eq.${cleanPhone}${email ? `,email.eq.${email}` : ''}`)
+      .limit(1)
+
+    if (existing?.length) {
+      return NextResponse.json({ success: true, alreadyExists: true })
+    }
+
     if (mode === 'individual') {
       // Cria só o usuário, sem casal
       const { error: userError } = await adminSupabase.from('users').insert({
