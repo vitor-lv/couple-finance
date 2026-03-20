@@ -131,14 +131,52 @@ export default function Home() {
             <p className="text-gray-600 text-xs mt-4">Sem cartão de crédito • Login com Google</p>
           </div>
 
-          {/* Phone image */}
+          {/* Phone mockup */}
           <div className="flex-1 flex justify-center lg:justify-end">
             <div className="relative">
-              <img
-                src="/hero-phone.png"
-                alt="Finn no WhatsApp"
-                className="w-64 lg:w-72 drop-shadow-2xl"
-              />
+              <div className="w-60 h-[480px] bg-[#111B21] rounded-[2.5rem] border-2 border-gray-700 flex flex-col overflow-hidden shadow-2xl shadow-black/50">
+                {/* WhatsApp header */}
+                <div className="bg-[#1F2C34] px-4 py-3 flex items-center gap-3 border-b border-white/5">
+                  <div className="w-9 h-9 rounded-full bg-green-500 flex items-center justify-center text-sm font-bold text-white">F</div>
+                  <div className="flex-1">
+                    <div className="text-white text-sm font-semibold">Finn</div>
+                    <div className="text-green-400 text-xs">online agora</div>
+                  </div>
+                </div>
+                {/* Messages */}
+                <div className="flex-1 p-3 flex flex-col gap-3 overflow-hidden bg-[#0B1419]">
+                  <div className="bg-[#1F2C34] rounded-xl rounded-tl-sm p-2.5 text-xs text-gray-200 self-end max-w-[85%]">
+                    g 50 almoço 🍱
+                  </div>
+                  <div className="bg-[#005C4B] rounded-xl rounded-tr-sm p-2.5 text-xs text-white self-start max-w-[85%]">
+                    ✅ Gasto de <strong>R$50</strong> em Alimentação registrado!
+                  </div>
+                  <div className="bg-[#1F2C34] rounded-xl rounded-tl-sm p-2.5 text-xs text-gray-200 self-end max-w-[85%]">
+                    ? resumo do mês
+                  </div>
+                  <div className="bg-[#005C4B] rounded-xl rounded-tr-sm p-2.5 text-xs text-white self-start max-w-[85%]">
+                    📊 <strong>Resumo do casal</strong><br/>
+                    Gastos: R$2.380<br/>
+                    Receitas: R$8.500<br/>
+                    Saldo: R$6.120 ✨
+                  </div>
+                  <div className="bg-[#1F2C34] rounded-xl rounded-tl-sm p-2.5 text-xs text-gray-200 self-end max-w-[85%]">
+                    ? meta
+                  </div>
+                  <div className="bg-[#005C4B] rounded-xl rounded-tr-sm p-2.5 text-xs text-white self-start max-w-[85%]">
+                    🎯 Viagem para Europa<br/>
+                    R$4.200 / R$15.000<br/>
+                    <span className="text-green-300">28% concluído</span>
+                  </div>
+                </div>
+                {/* Input bar */}
+                <div className="bg-[#1F2C34] px-3 py-2 flex items-center gap-2">
+                  <div className="flex-1 bg-[#2A3942] rounded-full px-3 py-1.5 text-xs text-gray-400">
+                    Mensagem
+                  </div>
+                  <div className="w-7 h-7 bg-green-500 rounded-full flex items-center justify-center text-white text-xs">➤</div>
+                </div>
+              </div>
               {/* Glow */}
               <div className="absolute -inset-4 bg-green-500/10 rounded-full blur-3xl -z-10" />
             </div>
