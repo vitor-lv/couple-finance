@@ -26,20 +26,54 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
     }
 
-    const { phone, partnerName, partnerPhone, chatMode } = await request.json()
+    const { name, phone, partnerName, partnerPhone, partnerEmail, mode } = await request.json()
 
-    if (!phone || !partnerName || !partnerPhone) {
-      return NextResponse.json({ error: 'Todos os campos são obrigatórios' }, { status: 400 })
+    if (!phone) {
+      return NextResponse.json({ error: 'Telefone é obrigatório' }, { status: 400 })
     }
 
-    // Remove tudo que não for número
+    if (mode === 'casal' && (!partnerName || !partnerPhone)) {
+      return NextResponse.json({ error: 'Dados do parceiro(a) são obrigatórios' }, { status: 400 })
+    }
+
     const cleanPhone = phone.replace(/\D/g, '')
+    const userName = name?.trim() ||
+      (user.user_metadata?.full_name ??
+      user.user_metadata?.name ??
+      user.email?.split('@')[0] ??
+      'Usuário')
+
+    // Remove registro temporário sem phone (criado no callback)
+    await adminSupabase
+      .from('users')
+      .delete()
+      .eq('email', user.email!)
+      .is('phone', null)
+
+    if (mode === 'individual') {
+      // Cria só o usuário, sem casal
+      const { error: userError } = await adminSupabase.from('users').insert({
+        name: userName,
+        email: user.email,
+        phone: cleanPhone,
+        onboarding_completed: false,
+        onboarding_step: 0,
+      })
+
+      if (userError) {
+        console.error('completar-cadastro individual error:', userError.message)
+        return NextResponse.json({ error: 'Erro ao criar usuário' }, { status: 500 })
+      }
+
+      return NextResponse.json({ success: true, mode: 'individual' })
+    }
+
+    // Modo casal
     const cleanPartnerPhone = partnerPhone.replace(/\D/g, '')
 
-    // Cria o casal
     const { data: couple, error: coupleError } = await adminSupabase
       .from('couples')
-      .insert({ chat_mode: chatMode === 'group' ? 'group' : 'individual' })
+      .insert({ chat_mode: 'individual' })
       .select('id')
       .single()
 
@@ -47,21 +81,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Erro ao criar casal' }, { status: 500 })
     }
 
-    // Deleta registro anterior sem phone (criado no /sucesso)
-    await adminSupabase
-      .from('users')
-      .delete()
-      .eq('email', user.email!)
-      .is('phone', null)
-
-    // Fallback para name: Google metadata → parte do email
-    const userName =
-      user.user_metadata?.full_name ??
-      user.user_metadata?.name ??
-      user.email?.split('@')[0] ??
-      'Usuário'
-
-    // Cria os 2 usuários
     const { error: usersError } = await adminSupabase.from('users').insert([
       {
         name: userName,
@@ -73,6 +92,7 @@ export async function POST(request: NextRequest) {
       },
       {
         name: partnerName,
+        email: partnerEmail || null,
         phone: cleanPartnerPhone,
         couple_id: couple.id,
         onboarding_completed: false,
@@ -81,11 +101,11 @@ export async function POST(request: NextRequest) {
     ])
 
     if (usersError) {
-      console.error('completar-cadastro usersError:', usersError.message)
+      console.error('completar-cadastro casal error:', usersError.message)
       return NextResponse.json({ error: 'Erro ao criar usuários' }, { status: 500 })
     }
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true, mode: 'casal' })
   } catch (error) {
     console.error('completar-cadastro error:', error instanceof Error ? error.message : 'unknown')
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 })
