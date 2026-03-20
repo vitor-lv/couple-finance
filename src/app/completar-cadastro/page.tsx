@@ -143,8 +143,8 @@ export default function CompletarCadastro() {
         <span className="bg-green-500 text-white text-xs px-2 py-0.5 rounded-full font-medium">AI</span>
       </header>
 
-      <div className="flex-1 flex items-start justify-center px-4 py-10">
-        <div className={`w-full ${mode === 'casal' ? 'max-w-3xl' : 'max-w-md'}`}>
+      <div className="flex-1 flex flex-col items-center px-4 py-10">
+        <div className="w-full max-w-md">
 
           {/* Título */}
           <div className="mb-8">
@@ -186,10 +186,12 @@ export default function CompletarCadastro() {
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+          </div>{/* fecha max-w-md */}
 
-            {/* Boxes lado a lado no modo casal */}
-            <div className={mode === 'casal' ? 'grid grid-cols-2 gap-4' : 'flex flex-col gap-5'}>
+          <form onSubmit={handleSubmit} className="flex flex-col items-center gap-5 w-full">
+
+            {/* Boxes — expandem no casal */}
+            <div className={mode === 'casal' ? 'grid grid-cols-2 gap-4 w-full max-w-3xl' : 'flex flex-col gap-5 w-full max-w-md'}>
 
             {/* Dados do usuário */}
             <div className="flex flex-col gap-4 p-5 bg-white/5 rounded-2xl border border-white/10">
@@ -252,6 +254,17 @@ export default function CompletarCadastro() {
                 </div>
 
                 <div className="flex flex-col gap-1.5">
+                  <label className="text-xs text-gray-400">e-mail <span className="text-gray-600">(opcional)</span></label>
+                  <input
+                    type="email"
+                    placeholder="email@exemplo.com"
+                    value={partnerEmail}
+                    onChange={e => setPartnerEmail(e.target.value)}
+                    className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-green-500 transition-colors placeholder:text-gray-600"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1.5">
                   <label className="text-xs text-gray-400">WhatsApp</label>
                   <div className="bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 focus-within:border-green-500 transition-colors">
                     <PhoneInput
@@ -264,40 +277,32 @@ export default function CompletarCadastro() {
                   </div>
                 </div>
 
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs text-gray-400">e-mail <span className="text-gray-600">(opcional)</span></label>
-                  <input
-                    type="email"
-                    placeholder="email@exemplo.com"
-                    value={partnerEmail}
-                    onChange={e => setPartnerEmail(e.target.value)}
-                    className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-green-500 transition-colors placeholder:text-gray-600"
-                  />
-                </div>
               </div>
             )}
 
             </div>{/* fim grid */}
 
-            {error && (
-              <p className="text-xs text-red-400 text-center bg-red-500/10 py-3 px-4 rounded-xl border border-red-500/20">
-                {error}
+            {/* Erro e botão — sempre max-w-md */}
+            <div className="w-full max-w-md flex flex-col gap-4">
+              {error && (
+                <p className="text-xs text-red-400 text-center bg-red-500/10 py-3 px-4 rounded-xl border border-red-500/20">
+                  {error}
+                </p>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-green-500 hover:bg-green-600 text-white rounded-full py-4 text-sm font-semibold flex items-center justify-center gap-2 transition-all duration-200 hover:-translate-y-0.5 shadow-lg shadow-green-500/20 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {loading ? 'Salvando...' : 'Ativar o Finn →'}
+              </button>
+
+              <p className="text-xs text-gray-600 text-center">
+                Seus dados são protegidos com criptografia de nível bancário 🔒
               </p>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="bg-green-500 hover:bg-green-600 text-white rounded-full py-4 text-sm font-semibold flex items-center justify-center gap-2 transition-all duration-200 hover:-translate-y-0.5 shadow-lg shadow-green-500/20 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              {loading ? 'Salvando...' : 'Ativar o Finn →'}
-            </button>
-
-            <p className="text-xs text-gray-600 text-center">
-              Seus dados são protegidos com criptografia de nível bancário 🔒
-            </p>
+            </div>
           </form>
-        </div>
       </div>
 
       <style jsx global>{`
