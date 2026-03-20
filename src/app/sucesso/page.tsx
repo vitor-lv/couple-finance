@@ -78,7 +78,7 @@ function SucessoContent() {
             {[
               { cmd: '150 reais no mercado', desc: 'registrar um gasto' },
               { cmd: 'salário 5000', desc: 'registrar o salário' },
-              { cmd: '? resumo', desc: 'ver resumo do mês' },
+              { cmd: 'total de gastos do mês', desc: 'ver resumo do mês' },
             ].map((tip, i) => (
               <div key={i} className="flex items-center justify-between bg-white/5 border border-white/10 rounded-xl px-4 py-3">
                 <span className="text-xs text-gray-500">{tip.desc}</span>
