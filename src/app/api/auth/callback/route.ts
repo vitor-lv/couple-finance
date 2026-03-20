@@ -31,11 +31,14 @@ export async function GET(request: NextRequest) {
       const { data: { user } } = await supabase.auth.getUser()
 
       if (user?.email) {
-        const { data: existing } = await adminSupabase
+        // Busca qualquer usuário com esse email (pega o primeiro se houver duplicatas)
+        const { data: existingRows } = await adminSupabase
           .from('users')
           .select('id, phone')
           .eq('email', user.email)
-          .maybeSingle()
+          .limit(1)
+
+        const existing = existingRows?.[0] ?? null
 
         if (!existing) {
           // Fallback para name: Google metadata → parte do email

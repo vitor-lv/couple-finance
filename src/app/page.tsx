@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase-browser'
 
 const features = [
@@ -73,6 +73,14 @@ const faqs = [
 export default function Home() {
   const [loading, setLoading] = useState(false)
   const [openFaq, setOpenFaq] = useState<number | null>(null)
+  const [authError, setAuthError] = useState(false)
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('error') === 'auth') {
+      setAuthError(true)
+    }
+  }, [])
 
   const handleGoogleLogin = async () => {
     setLoading(true)
@@ -87,6 +95,13 @@ export default function Home() {
     <div className="font-sans antialiased">
 
       {/* NAVBAR */}
+      {authError && (
+        <div className="bg-red-500 text-white text-sm text-center py-3 px-6">
+          Erro ao fazer login. Tente novamente ou{' '}
+          <button onClick={() => setAuthError(false)} className="underline cursor-pointer">fechar</button>.
+        </div>
+      )}
+
       <nav className="bg-[#0D1117] px-6 py-4 flex items-center justify-between sticky top-0 z-50 border-b border-white/5">
         <div className="flex items-center gap-2">
           <span className="text-white text-xl font-bold tracking-tight">finn</span>
