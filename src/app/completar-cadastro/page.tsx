@@ -215,15 +215,6 @@ export default function CompletarCadastro() {
                 </div>
               </div>
 
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs text-gray-400">e-mail</label>
-                <input
-                  type="email"
-                  value={userEmail}
-                  readOnly
-                  className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-500 outline-none cursor-not-allowed"
-                />
-              </div>
             </div>
 
             {/* Dados do parceiro — só no modo casal */}
