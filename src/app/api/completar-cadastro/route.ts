@@ -1,35 +1,12 @@
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase as adminSupabase } from '@/lib/supabase'
 
 export async function POST(request: NextRequest) {
   try {
-    const cookieStore = await cookies()
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() { return cookieStore.getAll() },
-          setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            )
-          },
-        },
-      }
-    )
+    const { name, email, phone, partnerName, partnerPhone, partnerEmail, mode } = await request.json()
 
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
-    }
-
-    const { name, phone, partnerName, partnerPhone, partnerEmail, mode } = await request.json()
-
-    if (!phone) {
-      return NextResponse.json({ error: 'Telefone é obrigatório' }, { status: 400 })
+    if (!name?.trim() || !phone) {
+      return NextResponse.json({ error: 'Nome e telefone são obrigatórios' }, { status: 400 })
     }
 
     if (mode === 'casal' && (!partnerName || !partnerPhone)) {
@@ -37,24 +14,13 @@ export async function POST(request: NextRequest) {
     }
 
     const cleanPhone = phone.replace(/\D/g, '')
-    const userName = name?.trim() ||
-      (user.user_metadata?.full_name ??
-      user.user_metadata?.name ??
-      user.email?.split('@')[0] ??
-      'Usuário')
-
-    // Remove registro temporário sem phone (criado no callback)
-    await adminSupabase
-      .from('users')
-      .delete()
-      .eq('email', user.email!)
-      .is('phone', null)
+    const userName = name.trim()
 
     if (mode === 'individual') {
       // Cria só o usuário, sem casal
       const { error: userError } = await adminSupabase.from('users').insert({
         name: userName,
-        email: user.email,
+        email: email ?? null,
         phone: cleanPhone,
         onboarding_completed: false,
         onboarding_step: 0,
@@ -84,7 +50,7 @@ export async function POST(request: NextRequest) {
     const { error: usersError } = await adminSupabase.from('users').insert([
       {
         name: userName,
-        email: user.email,
+        email: email ?? null,
         phone: cleanPhone,
         couple_id: couple.id,
         onboarding_completed: false,
