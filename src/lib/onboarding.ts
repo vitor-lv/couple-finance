@@ -45,10 +45,8 @@ export function getOnboardingMessage(step: number, userName: string, isCouple = 
       case 2:
         return `Qual dia do mês você costuma receber? (ex: 5, 10, 25)`
       case 3:
-        return `Você recebe algum bônus ou 13º anual?\n(responda: sim ou não)`
-      case 4:
         return `Qual sua maior meta financeira agora?\n(ex: reserva de emergência, viagem, casa própria)`
-      case 5:
+      case 4:
         return `Qual o valor aproximado dessa meta?\n(ex: 10000)`
       default:
         return `Tudo certo! Onboarding completo. 🎉`
@@ -64,10 +62,8 @@ export function getOnboardingMessage(step: number, userName: string, isCouple = 
     case 2:
       return `Qual dia do mês você costuma receber? (ex: 5, 10, 25)`
     case 3:
-      return `Você recebe algum bônus ou 13º anual?\n(responda: sim ou não)`
-    case 4:
       return `Qual a maior meta financeira de vocês como casal?\n(ex: viagem dos sonhos, casa própria, reserva de emergência)`
-    case 5:
+    case 4:
       return `Qual o valor aproximado dessa meta?\n(ex: 50000)`
     default:
       return `Tudo certo! 🎉`
@@ -173,9 +169,8 @@ export async function processOnboardingStep(
           0: `Não entendi seu nome. Como você quer que eu te chame?`,
           1: `Não consegui identificar o valor. Pode me dizer sua renda mensal? Ex: 5000`,
           2: `Não entendi o dia. Qual dia do mês você costuma receber? Ex: 5, 10, 25`,
-          3: `Não entendi. Você recebe bônus ou 13º anual? Responde sim ou não 😊`,
-          4: `Pode descrever um pouco mais sua meta?`,
-          5: `Não entendi o valor. Qual o valor aproximado da meta? Ex: 10000`,
+          3: `Pode descrever um pouco mais sua meta?`,
+          4: `Não entendi o valor. Qual o valor aproximado da meta? Ex: 10000`,
         }
         return clarifications[step] ?? `Não entendi. Pode repetir?`
       }
@@ -184,12 +179,11 @@ export async function processOnboardingStep(
         case 0: updates.nickname = interpreted.value as string; break
         case 1: updates.monthly_income = interpreted.value as number; break
         case 2: updates.payment_day = interpreted.value as number; break
-        case 3: updates.has_bonus = interpreted.value as boolean; break
-        case 4: updates.goal_description = interpreted.value as string; break
-        case 5:
+        case 3: updates.goal_description = interpreted.value as string; break
+        case 4:
           updates.goal_amount = interpreted.value as number
           updates.onboarding_completed = true
-          nextStep = 6
+          nextStep = 5
           break
       }
       break
@@ -232,8 +226,7 @@ export async function processOnboardingStep(
     0: `apelido "${updates.nickname}"`,
     1: `renda mensal R$${updates.monthly_income}`,
     2: `dia de recebimento: ${updates.payment_day}`,
-    3: `bônus anual: ${updates.has_bonus ? 'sim' : 'não'}`,
-    4: `meta: "${updates.goal_description}"`,
+    3: `meta: "${updates.goal_description}"`,
   }
 
   const claudeMsg = await generateOnboardingMessage(nextStep, {

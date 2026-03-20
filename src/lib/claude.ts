@@ -102,17 +102,15 @@ COMANDOS:
 const ONBOARDING_NEXT_QUESTIONS_INDIVIDUAL: Record<number, string> = {
   1: 'qual é a renda mensal aproximada — explique brevemente que a info é segura e serve para personalizar a experiência; mencione que se a renda for variável, pode compartilhar mês a mês; peça só o número (ex: 5000)',
   2: 'qual dia do mês costuma receber o salário ou pagamento (ex: 5, 10, 25)',
-  3: 'se recebe algum bônus ou 13º anual (peça para responder: sim ou não)',
-  4: 'qual é a maior meta financeira pessoal agora (ex: reserva de emergência, viagem, casa própria)',
-  5: 'qual o valor aproximado dessa meta (peça só o número, ex: 10000)',
+  3: 'qual é a maior meta financeira pessoal agora (ex: reserva de emergência, viagem, casa própria)',
+  4: 'qual o valor aproximado dessa meta (peça só o número, ex: 10000)',
 }
 
 const ONBOARDING_NEXT_QUESTIONS_CASAL: Record<number, string> = {
   1: 'qual é a renda mensal aproximada — reforce que cada um informa a própria renda separado e que os dados são seguros; mencione renda variável; peça só o número (ex: 5000)',
   2: 'qual dia do mês costuma receber o salário ou pagamento (ex: 5, 10, 25)',
-  3: 'se recebe algum bônus ou 13º anual (peça para responder: sim ou não)',
-  4: 'qual é a maior meta financeira do casal agora (ex: viagem dos sonhos, casa própria, reserva de emergência)',
-  5: 'qual o valor aproximado dessa meta do casal (peça só o número, ex: 50000)',
+  3: 'qual é a maior meta financeira do casal agora (ex: viagem dos sonhos, casa própria, reserva de emergência)',
+  4: 'qual o valor aproximado dessa meta do casal (peça só o número, ex: 50000)',
 }
 
 export async function generateOnboardingMessage(
@@ -191,11 +189,7 @@ export async function interpretOnboardingAnswer(
       context: 'O usuário informou o dia do mês que recebe salário/pagamento. Pode dizer "dia 5", "todo dia 10", "recebo no 15", "final do mês" (→ 30). Extraia apenas o número do dia (1-31).',
       schema: '{"value": <número 1-31 ou null>, "display": "dia X", "valid": <true se extraiu dia>}',
     },
-    3: {
-      context: 'O usuário respondeu se tem bônus ou 13º anual. Interprete qualquer forma de sim/não, ex: "tenho sim", "não tenho", "recebo PLR", "nada disso", "às vezes".',
-      schema: '{"value": <true ou false>, "display": <"sim" ou "não">, "valid": true}',
-    },
-    5: {
+    4: {
       context: 'O usuário informou o valor da meta financeira. Pode ser "uns 20 mil", "50k", "cem mil", "100.000". Extraia o valor numérico em reais.',
       schema: '{"value": <número ou null se não entendeu>, "display": "R$ XX.XXX", "valid": <true se extraiu valor>}',
     },
