@@ -257,15 +257,26 @@ export async function POST(request: NextRequest) {
 
     // --- 2. ONBOARDING ---
     if (user && user.onboarding_completed === false) {
-      // Se está no step 0 e ainda não tem nickname → pergunta o nome antes de processar
+      // Se está no step 0 e ainda não tem nickname → verifica se já enviamos a pergunta
       if (user.onboarding_step === 0 && !user.nickname) {
-        const welcomeMsg = getOnboardingMessage(0, user.name ?? '', !!user.couple_id)
-        await supabase.from('messages').insert([
-          { phone, sender_name: senderName, role: 'user', content: message, raw_message: rawMessage },
-          { phone, sender_name: 'assistant', role: 'assistant', content: welcomeMsg },
-        ])
-        await sendTextMessage(replyTo, welcomeMsg)
-        return NextResponse.json({ status: 'ok' })
+        const { count: assistantCount } = await supabase
+          .from('messages')
+          .select('*', { count: 'exact', head: true })
+          .eq('phone', phone)
+          .eq('role', 'assistant')
+
+        if ((assistantCount ?? 0) === 0) {
+          // Nenhuma mensagem enviada ainda (cadastro novo) → envia a pergunta do nome
+          const welcomeMsg = getOnboardingMessage(0, user.name ?? '', !!user.couple_id)
+          await supabase.from('messages').insert([
+            { phone, sender_name: senderName, role: 'user', content: message, raw_message: rawMessage },
+            { phone, sender_name: 'assistant', role: 'assistant', content: welcomeMsg },
+          ])
+          await sendTextMessage(replyTo, welcomeMsg)
+          return NextResponse.json({ status: 'ok' })
+        }
+        // Já existe mensagem do assistente (pergunta já foi feita, ex: após reset) →
+        // cai no processOnboardingStep abaixo para salvar o nickname
       }
 
       // Processa a resposta do step atual e retorna próxima pergunta
