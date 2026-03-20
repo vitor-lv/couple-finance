@@ -1,8 +1,41 @@
 import Anthropic from '@anthropic-ai/sdk'
+import OpenAI from 'openai'
+import { toFile } from 'openai/uploads'
 
 const getAnthropic = () => new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 })
+
+// Groq é compatível com a SDK da OpenAI e oferece Whisper gratuitamente
+const getGroq = () => new OpenAI({
+  apiKey: process.env.GROQ_API_KEY,
+  baseURL: 'https://api.groq.com/openai/v1',
+})
+
+export async function transcribeAudio(audioUrl: string): Promise<string | null> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 30000)
+
+  try {
+    const audioResponse = await fetch(audioUrl, { signal: controller.signal })
+    if (!audioResponse.ok) return null
+
+    const buffer = await audioResponse.arrayBuffer()
+    const file = await toFile(Buffer.from(buffer), 'audio.ogg', { type: 'audio/ogg' })
+
+    const transcription = await getGroq().audio.transcriptions.create({
+      file,
+      model: 'whisper-large-v3',
+      language: 'pt',
+    })
+
+    return transcription.text?.trim() || null
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timeout)
+  }
+}
 
 const FINANCE_SYSTEM_PROMPT = `Você é o Finn, assistente financeiro de casais no WhatsApp. Você é direto, simpático e usa emojis com moderação.
 
@@ -26,6 +59,9 @@ REGRAS:
 - Para consultas, seja mais detalhado e use formatação com emojis
 - Sempre confirme o valor e categoria registrados
 - Se o valor ou descrição não estiver claro, peça confirmação
+- NUNCA mostre progresso de meta após registrar um gasto comum — gasto não é poupança
+- Só mencione meta/progresso se o usuário perguntar explicitamente sobre a meta
+- Nunca invente valores de progresso — use apenas dados que o usuário fornecer
 
 Responda APENAS em JSON válido, sem markdown:
 {
