@@ -241,8 +241,8 @@ export default function Home() {
         </div>
       </section>
 
-      {/* PRICING */}
-      <section className="bg-white px-6 py-24">
+      {/* PRICING - hidden temporarily */}
+      {false && <section className="bg-white px-6 py-24">
         <div className="max-w-lg mx-auto text-center">
           <h2 className="text-3xl lg:text-4xl font-bold text-gray-900 mb-3">
             Investimento na sua liberdade
@@ -279,7 +279,7 @@ export default function Home() {
             <p className="text-gray-400 text-xs mt-4">7 dias grátis • Cancele quando quiser</p>
           </div>
         </div>
-      </section>
+      </section>}
 
       {/* HOW IT WORKS */}
       <section className="bg-[#0D1117] px-6 py-24">
@@ -300,8 +300,8 @@ export default function Home() {
         </div>
       </section>
 
-      {/* TESTIMONIALS */}
-      <section className="bg-white px-6 py-24">
+      {/* TESTIMONIALS - hidden temporarily */}
+      {false && <section className="bg-white px-6 py-24">
         <div className="max-w-5xl mx-auto">
           <h2 className="text-3xl lg:text-4xl font-bold text-center text-gray-900 mb-14">
             O que dizem nossos usuários
@@ -329,7 +329,7 @@ export default function Home() {
             ))}
           </div>
         </div>
-      </section>
+      </section>}
 
       {/* FAQ */}
       <section className="bg-gray-50 px-6 py-24">
