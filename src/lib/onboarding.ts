@@ -65,8 +65,7 @@ function conclusionMessage(nickname: string, goalDescription: string, goalAmount
     `• _"g 50 mercado"_ → registrar gasto\n` +
     `• _"g 200 restaurante"_ → registrar gasto\n` +
     `• _"? resumo"_ → ver seus gastos\n` +
-    `• _"? meta"_ → ver progresso da meta\n\n` +
-    `Compartilhe meu contato com seu parceiro(a) para ele(a) completar o perfil! 💑`
+    `• _"? meta"_ → ver progresso da meta`
   )
 }
 
