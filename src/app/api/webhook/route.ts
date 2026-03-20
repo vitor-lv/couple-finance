@@ -304,7 +304,7 @@ export async function POST(request: NextRequest) {
     if (result.tipo === 'resetar_perfil') {
       await supabase.from('users').update({
         onboarding_completed: false,
-        onboarding_step: -1,
+        onboarding_step: 0,
         editing_field: null,
         nickname: null,
         monthly_income: null,
@@ -316,11 +316,8 @@ export async function POST(request: NextRequest) {
         fixed_expenses: null,
       }).eq('phone', phone)
 
-      const resetMsg = result.resposta
       const welcomeMsg = getWelcomeMessage(user.name ?? senderName, !!user.couple_id)
-      await supabase.from('users').update({ onboarding_step: 0 }).eq('phone', phone)
-
-      const fullMsg = `${resetMsg}\n\n${welcomeMsg}`
+      const fullMsg = `Perfil zerado! 🔄\n\n${welcomeMsg}`
       await supabase.from('messages').insert([
         { phone, sender_name: senderName, role: 'user', content: message, raw_message: rawMessage },
         { phone, sender_name: 'assistant', role: 'assistant', content: fullMsg },

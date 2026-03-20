@@ -40,6 +40,15 @@ export async function transcribeAudio(audioUrl: string): Promise<string | null> 
 // ─── INTERPRETAÇÃO DO ONBOARDING ─────────────────────────────────────────────
 
 export async function interpretNickname(message: string): Promise<string | null> {
+  const trimmed = message.trim()
+  if (!trimmed) return null
+
+  // Mensagem curta (≤ 30 chars) = provavelmente já é o apelido direto (ex: "LV", "Vitor", "Ju")
+  if (trimmed.length <= 30 && !/^(oi|olá|ola|sim|não|nao|ok|tudo|pode)$/i.test(trimmed)) {
+    return trimmed
+  }
+
+  // Mensagem longa = usa Claude pra extrair o nome ("pode me chamar de Vitor ok?")
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 8000)
   try {
@@ -47,8 +56,8 @@ export async function interpretNickname(message: string): Promise<string | null>
       {
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 50,
-        system: 'O usuário informou como quer ser chamado. Extrai apenas o apelido ou nome. Retorna só o nome em formato Title Case, sem pontuação. Se não conseguir identificar um nome válido, retorna a palavra null.',
-        messages: [{ role: 'user', content: message }],
+        system: 'O usuário informou como quer ser chamado. Extrai apenas o apelido ou nome. Aceita qualquer forma: nomes, apelidos, iniciais (ex: LV, JC), nomes compostos. Retorna só o nome sem pontuação extra. Se não conseguir identificar nenhum nome, retorna a palavra null.',
+        messages: [{ role: 'user', content: trimmed }],
       },
       { signal: controller.signal }
     )
@@ -56,7 +65,7 @@ export async function interpretNickname(message: string): Promise<string | null>
     if (!text || text.toLowerCase() === 'null') return null
     return text
   } catch {
-    return null
+    return trimmed.split(' ')[0] // fallback: primeira palavra
   } finally {
     clearTimeout(timeout)
   }
