@@ -259,7 +259,7 @@ export async function POST(request: NextRequest) {
     if (user && user.onboarding_completed === false) {
       // Se está no step 0 e ainda não tem nickname → pergunta o nome antes de processar
       if (user.onboarding_step === 0 && !user.nickname) {
-        const welcomeMsg = getOnboardingMessage(0, user.name ?? '')
+        const welcomeMsg = getOnboardingMessage(0, user.name ?? '', !!user.couple_id)
         await supabase.from('messages').insert([
           { phone, sender_name: senderName, role: 'user', content: message, raw_message: rawMessage },
           { phone, sender_name: 'assistant', role: 'assistant', content: welcomeMsg },

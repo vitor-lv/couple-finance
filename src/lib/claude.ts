@@ -99,12 +99,20 @@ COMANDOS:
   }
 }
 
-const ONBOARDING_NEXT_QUESTIONS: Record<number, string> = {
+const ONBOARDING_NEXT_QUESTIONS_INDIVIDUAL: Record<number, string> = {
   1: 'qual é a renda mensal aproximada — explique brevemente que a info é segura e serve para personalizar a experiência; mencione que se a renda for variável, pode compartilhar mês a mês; peça só o número (ex: 5000)',
-  2: 'qual dia do mês costuma receber o salário ou pagamento (ex: 5, 10, 25) — explique que isso ajuda a calcular estimativas e projeções',
+  2: 'qual dia do mês costuma receber o salário ou pagamento (ex: 5, 10, 25)',
   3: 'se recebe algum bônus ou 13º anual (peça para responder: sim ou não)',
-  4: 'qual é a maior meta financeira agora (ex: reserva de emergência, viagem, casa própria)',
+  4: 'qual é a maior meta financeira pessoal agora (ex: reserva de emergência, viagem, casa própria)',
   5: 'qual o valor aproximado dessa meta (peça só o número, ex: 10000)',
+}
+
+const ONBOARDING_NEXT_QUESTIONS_CASAL: Record<number, string> = {
+  1: 'qual é a renda mensal aproximada — reforce que cada um informa a própria renda separado e que os dados são seguros; mencione renda variável; peça só o número (ex: 5000)',
+  2: 'qual dia do mês costuma receber o salário ou pagamento (ex: 5, 10, 25)',
+  3: 'se recebe algum bônus ou 13º anual (peça para responder: sim ou não)',
+  4: 'qual é a maior meta financeira do casal agora (ex: viagem dos sonhos, casa própria, reserva de emergência)',
+  5: 'qual o valor aproximado dessa meta do casal (peça só o número, ex: 50000)',
 }
 
 export async function generateOnboardingMessage(
@@ -113,10 +121,18 @@ export async function generateOnboardingMessage(
     userName: string
     justAnswered: string
     savedLabel: string
+    isCouple?: boolean
   }
 ): Promise<string> {
-  const nextQuestion = ONBOARDING_NEXT_QUESTIONS[nextStep]
+  const questions = context.isCouple
+    ? ONBOARDING_NEXT_QUESTIONS_CASAL
+    : ONBOARDING_NEXT_QUESTIONS_INDIVIDUAL
+  const nextQuestion = questions[nextStep]
   if (!nextQuestion) return ''
+
+  const modeContext = context.isCouple
+    ? 'O usuário faz parte de um casal que se cadastrou junto. As perguntas devem ser contextualizadas para o casal.'
+    : 'O usuário usa o Finn de forma individual.'
 
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 8000)
@@ -126,7 +142,8 @@ export async function generateOnboardingMessage(
       {
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 150,
-        system: `Você é o Finn, assistente financeiro de casais no WhatsApp.
+        system: `Você é o Finn, assistente financeiro no WhatsApp.
+${modeContext}
 Você está fazendo o onboarding de um novo usuário.
 Seja caloroso, casual e direto. Máximo 2 linhas.
 Use emojis com moderação (máx 1).

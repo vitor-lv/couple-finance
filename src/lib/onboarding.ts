@@ -28,27 +28,49 @@ interface Couple {
   group_id: string | null
 }
 
-export function getOnboardingMessage(step: number, userName: string): string {
+export function getOnboardingMessage(step: number, userName: string, isCouple = false): string {
   const name = userName || 'você'
+
+  // ── Fluxo individual (sem couple_id) ──────────────────────────────────────
+  if (!isCouple) {
+    switch (step) {
+      case -1:
+        return `Olá ${name}! 👋 Eu sou o Finn, seu assistente financeiro para casais.\n\nQuer fazer o cadastro sozinho agora e compartilhar meu contato depois, ou prefere chamar seu parceiro(a) para fazermos juntos?\n\n(responda: *sozinho* ou *casal*)`
+      case -2:
+        return `Ótimo! 💑 Qual é o número do WhatsApp do seu parceiro(a)?\n(só os números, ex: 11999999999)`
+      case 0:
+        return `Oi ${name}! 👋 Eu sou o Finn, seu assistente financeiro pessoal.\n\nComo você quer que eu te chame?`
+      case 1:
+        return `Antes de continuar, quero ser transparente: vou te fazer algumas perguntas sobre sua renda. 🔒 Essas informações ficam seguras e são usadas só para personalizar sua experiência — quanto mais você compartilhar, mais o Finn consegue te ajudar com estimativas, metas e alertas certeiros.\n\nSe sua renda for variável, sem problema — você pode me contar quanto ganhou a cada mês que passar.\n\nQual é sua renda mensal aproximada? (só o número, ex: 5000)`
+      case 2:
+        return `Qual dia do mês você costuma receber? (ex: 5, 10, 25)`
+      case 3:
+        return `Você recebe algum bônus ou 13º anual?\n(responda: sim ou não)`
+      case 4:
+        return `Qual sua maior meta financeira agora?\n(ex: reserva de emergência, viagem, casa própria)`
+      case 5:
+        return `Qual o valor aproximado dessa meta?\n(ex: 10000)`
+      default:
+        return `Tudo certo! Onboarding completo. 🎉`
+    }
+  }
+
+  // ── Fluxo casal (com couple_id) ───────────────────────────────────────────
   switch (step) {
-    case -1:
-      return `Olá ${name}! 👋 Eu sou o Finn, seu assistente financeiro para casais.\n\nQuer fazer o cadastro sozinho agora e compartilhar meu contato depois, ou prefere chamar seu parceiro(a) para fazermos juntos?\n\n(responda: *sozinho* ou *casal*)`
-    case -2:
-      return `Ótimo! 💑 Qual é o número do WhatsApp do seu parceiro(a)?\n(só os números, ex: 11999999999)`
     case 0:
-      return `Como você quer que eu te chame?`
+      return `Oi ${name}! 👋 Eu sou o Finn, o assistente financeiro do casal de vocês.\n\nVou fazer algumas perguntinhas para cada um separadamente — leva menos de 2 minutos. Pode ser?\n\nComo você quer que eu te chame?`
     case 1:
-      return `Prazer! Antes de continuar, quero ser transparente: vou te fazer algumas perguntas sobre sua renda. 🔒 Essas informações ficam seguras e são usadas só para personalizar sua experiência — quanto mais você compartilhar, mais o Finn consegue te ajudar com estimativas, metas e alertas certeiros.\n\nSe sua renda for variável, sem problema — você pode me contar quanto ganhou a cada mês que passar.\n\nQual é sua renda mensal aproximada? (só o número, ex: 5000)`
+      return `Agora vou te pedir algumas informações sobre sua renda. 🔒 Fique tranquilo(a): cada um do casal informa a própria renda separadamente e os dados ficam seguros.\n\nSe sua renda for variável, sem problema — você pode atualizar mês a mês.\n\nQual é a sua renda mensal aproximada? (só o número, ex: 5000)`
     case 2:
       return `Qual dia do mês você costuma receber? (ex: 5, 10, 25)`
     case 3:
       return `Você recebe algum bônus ou 13º anual?\n(responda: sim ou não)`
     case 4:
-      return `Qual sua maior meta financeira agora?\n(ex: reserva de emergência, viagem, casa própria)`
+      return `Qual a maior meta financeira de vocês como casal?\n(ex: viagem dos sonhos, casa própria, reserva de emergência)`
     case 5:
-      return `Qual o valor aproximado dessa meta?\n(ex: 10000)`
+      return `Qual o valor aproximado dessa meta?\n(ex: 50000)`
     default:
-      return `Tudo certo! Onboarding completo. 🎉`
+      return `Tudo certo! 🎉`
   }
 }
 
@@ -200,8 +222,30 @@ export async function processOnboardingStep(
   updates.onboarding_step = nextStep
   await supabase.from('users').update(updates).eq('phone', phone)
 
+  const isCouple = !!user.couple_id
+
   if (updates.onboarding_completed) {
-    return `Perfeito! Seu perfil está completo. 🎉\n\nAguardando seu parceiro(a) terminar o cadastro...`
+    if (isCouple) {
+      // Busca nome do parceiro para personalizar mensagem de espera
+      const { data: partner } = await supabase
+        .from('users')
+        .select('nickname, name')
+        .eq('couple_id', user.couple_id!)
+        .neq('phone', phone)
+        .maybeSingle()
+      const partnerName = partner?.nickname ?? partner?.name ?? 'seu parceiro(a)'
+      return `Perfeito! Seu perfil está completo. 🎉\n\nAgora é só aguardar *${partnerName}* terminar o cadastro dele(a) — assim que os dois estiverem prontos, o Finn ativa tudo para vocês! 💑`
+    }
+    // Fluxo individual — comemoração imediata com dicas
+    const nick = (updates.nickname as string) ?? user.nickname ?? user.name ?? 'você'
+    return (
+      `Perfeito, ${nick}! Tudo pronto. 🎉\n\n` +
+      `Agora é só usar o Finn aqui mesmo:\n\n` +
+      `• _"gastei 80 reais no mercado"_ → registra o gasto\n` +
+      `• _"recebi meu salário"_ → registra a receita\n` +
+      `• _"total de gastos do mês"_ → ver resumo\n\n` +
+      `Pode mandar sua primeira mensagem quando quiser! 🚀`
+    )
   }
 
   const displayName = (updates.nickname as string) ?? user.nickname ?? user.name ?? ''
@@ -219,9 +263,10 @@ export async function processOnboardingStep(
     userName: displayName,
     justAnswered: message.trim(),
     savedLabel: savedLabels[step] ?? '',
+    isCouple,
   })
 
-  return claudeMsg || getOnboardingMessage(nextStep, displayName)
+  return claudeMsg || getOnboardingMessage(nextStep, displayName, isCouple)
 }
 
 export async function checkCoupleComplete(coupleId: string): Promise<{
@@ -314,14 +359,16 @@ export async function handleCoupleComplete(users: User[], couple: Couple) {
   const totalIncome = users.reduce((sum, u) => sum + (u.monthly_income ?? 0), 0)
   const goalUser = users.find(u => u.goal_description) ?? users[0]
 
+  const names = users.map(u => u.nickname ?? u.name ?? 'vocês').join(' e ')
   const celebrationMsg =
-    `🎊 Vocês dois estão prontos! O Finn agora conhece o casal.\n\n` +
-    `Renda combinada: R$ ${totalIncome.toLocaleString('pt-BR')}\n` +
-    `Meta: ${goalUser.goal_description} (R$ ${(goalUser.goal_amount ?? 0).toLocaleString('pt-BR')})\n\n` +
+    `🎊 *${names}, o Finn está pronto para o casal!*\n\n` +
+    `💰 Renda combinada: R$ ${totalIncome.toLocaleString('pt-BR')}\n` +
+    `🎯 Meta: ${goalUser.goal_description ?? 'não definida'} (R$ ${(goalUser.goal_amount ?? 0).toLocaleString('pt-BR')})\n\n` +
     `Agora é só usar:\n` +
-    `• g 50 mercado → registrar gasto\n` +
-    `• ? resumo → ver seus gastos\n` +
-    `• ? meta → ver progresso da meta 💑`
+    `• _"gastei 80 reais no mercado"_ → registrar gasto\n` +
+    `• _"recebi meu salário"_ → registrar receita\n` +
+    `• _"total de gastos do mês"_ → ver resumo do casal\n\n` +
+    `Qualquer um dos dois pode mandar mensagem aqui. Vamos lá! 💑`
 
   if (couple.chat_mode === 'group') {
     const phones = users.map(u => u.phone).filter(Boolean)
