@@ -71,9 +71,14 @@ const faqs = [
 ]
 
 export default function Home() {
-  const [loading, setLoading] = useState(false)
   const [openFaq, setOpenFaq] = useState<number | null>(null)
   const [authError, setAuthError] = useState(false)
+  const [showModal, setShowModal] = useState(false)
+  const [modalTab, setModalTab] = useState<'signup' | 'login'>('signup')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [authLoading, setAuthLoading] = useState(false)
+  const [modalError, setModalError] = useState('')
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -82,13 +87,34 @@ export default function Home() {
     }
   }, [])
 
-  const handleGoogleLogin = async () => {
-    setLoading(true)
+  const openSignup = () => { setModalTab('signup'); setModalError(''); setShowModal(true) }
+  const openLogin  = () => { setModalTab('login');  setModalError(''); setShowModal(true) }
+
+  const handleAuth = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setModalError('')
+    setAuthLoading(true)
     const supabase = createClient()
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: window.location.origin + '/api/auth/callback' },
-    })
+
+    if (modalTab === 'signup') {
+      const { error } = await supabase.auth.signUp({ email, password })
+      if (error) { setModalError(error.message); setAuthLoading(false); return }
+      // Cria registro temporário no DB e vai para completar cadastro
+      await fetch('/api/auth/email-signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      })
+      window.location.href = '/completar-cadastro'
+    } else {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+      if (error) { setModalError('Email ou senha incorretos'); setAuthLoading(false); return }
+      // Verifica se já completou cadastro
+      const res = await fetch('/api/auth/check-user')
+      const json = await res.json()
+      window.location.href = json.hasPhone ? '/sucesso' : '/completar-cadastro'
+    }
+    setAuthLoading(false)
   }
 
   return (
@@ -108,11 +134,10 @@ export default function Home() {
           <span className="bg-green-500 text-white text-xs px-2 py-0.5 rounded-full font-medium">AI</span>
         </div>
         <button
-          onClick={handleGoogleLogin}
-          disabled={loading}
-          className="bg-green-500 hover:bg-green-600 text-white px-5 py-2 rounded-full text-sm font-semibold transition-all duration-200 disabled:opacity-60 cursor-pointer"
+          onClick={openSignup}
+          className="bg-green-500 hover:bg-green-600 text-white px-5 py-2 rounded-full text-sm font-semibold transition-all duration-200 cursor-pointer"
         >
-          {loading ? 'Redirecionando...' : 'Começar grátis'}
+          Começar grátis
         </button>
       </nav>
 
@@ -133,15 +158,10 @@ export default function Home() {
               Agora você e seu parceiro(a) têm o melhor assistente de finanças direto no WhatsApp.
             </p>
             <button
-              onClick={handleGoogleLogin}
-              disabled={loading}
-              className="inline-flex items-center gap-3 bg-green-500 hover:bg-green-600 text-white px-8 py-4 rounded-full text-base font-semibold transition-all duration-200 shadow-lg shadow-green-500/25 hover:-translate-y-0.5 disabled:opacity-60 cursor-pointer"
+              onClick={openSignup}
+              className="inline-flex items-center gap-3 bg-green-500 hover:bg-green-600 text-white px-8 py-4 rounded-full text-base font-semibold transition-all duration-200 shadow-lg shadow-green-500/25 hover:-translate-y-0.5 cursor-pointer"
             >
-              <svg viewBox="0 0 24 24" className="w-5 h-5 fill-white" xmlns="http://www.w3.org/2000/svg">
-                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
-                <path d="M12 0C5.373 0 0 5.373 0 12c0 2.121.555 4.109 1.524 5.835L.057 23.428a.5.5 0 0 0 .614.614l5.593-1.467A11.945 11.945 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.814 9.814 0 0 1-5.013-1.375l-.36-.214-3.714.975.993-3.63-.234-.373A9.818 9.818 0 0 1 2.182 12C2.182 6.57 6.57 2.182 12 2.182S21.818 6.57 21.818 12 17.43 21.818 12 21.818z"/>
-              </svg>
-              {loading ? 'Redirecionando...' : 'Quero organizar minhas finanças'}
+              💬 Quero organizar minhas finanças
             </button>
             <p className="text-gray-600 text-xs mt-4">Sem cartão de crédito • Login com Google</p>
           </div>
@@ -288,11 +308,10 @@ export default function Home() {
               ))}
             </ul>
             <button
-              onClick={handleGoogleLogin}
-              disabled={loading}
-              className="w-full bg-green-500 hover:bg-green-600 text-white py-4 rounded-full font-semibold text-base transition-all duration-200 hover:-translate-y-0.5 shadow-lg shadow-green-500/20 disabled:opacity-60 cursor-pointer"
+              onClick={openSignup}
+              className="w-full bg-green-500 hover:bg-green-600 text-white py-4 rounded-full font-semibold text-base transition-all duration-200 hover:-translate-y-0.5 shadow-lg shadow-green-500/20 cursor-pointer"
             >
-              {loading ? 'Redirecionando...' : 'Assinar Agora'}
+              Assinar Agora
             </button>
             <p className="text-gray-400 text-xs mt-4">7 dias grátis • Cancele quando quiser</p>
           </div>
@@ -387,19 +406,63 @@ export default function Home() {
           Comece gratuitamente hoje e transforme o WhatsApp de vocês numa ferramenta financeira poderosa.
         </p>
         <button
-          onClick={handleGoogleLogin}
-          disabled={loading}
-          className="inline-flex items-center gap-3 bg-white text-green-600 font-bold px-10 py-4 rounded-full text-base hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 disabled:opacity-60 cursor-pointer"
+          onClick={openSignup}
+          className="inline-flex items-center gap-3 bg-white text-green-600 font-bold px-10 py-4 rounded-full text-base hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 cursor-pointer"
         >
-          <svg width="20" height="20" viewBox="0 0 18 18" fill="none">
-            <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z" fill="#4285F4"/>
-            <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/>
-            <path d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
-            <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
-          </svg>
-          {loading ? 'Redirecionando...' : 'Entrar com Google — é grátis'}
+          Criar conta grátis
         </button>
       </section>
+
+      {/* MODAL DE AUTH */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/70 backdrop-blur-sm" onClick={() => setShowModal(false)}>
+          <div className="bg-[#111827] border border-white/10 rounded-2xl p-8 w-full max-w-sm shadow-2xl" onClick={e => e.stopPropagation()}>
+            {/* Tabs */}
+            <div className="flex gap-1 bg-white/5 rounded-xl p-1 mb-6">
+              <button onClick={() => { setModalTab('signup'); setModalError('') }} className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all cursor-pointer ${modalTab === 'signup' ? 'bg-green-500 text-white' : 'text-gray-400 hover:text-white'}`}>Criar conta</button>
+              <button onClick={() => { setModalTab('login'); setModalError('') }} className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all cursor-pointer ${modalTab === 'login' ? 'bg-green-500 text-white' : 'text-gray-400 hover:text-white'}`}>Entrar</button>
+            </div>
+
+            <form onSubmit={handleAuth} className="flex flex-col gap-4">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs text-gray-400">e-mail</label>
+                <input
+                  type="email"
+                  placeholder="seu@email.com"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  required
+                  className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-green-500 transition-colors placeholder:text-gray-600"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs text-gray-400">senha</label>
+                <input
+                  type="password"
+                  placeholder="mínimo 6 caracteres"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  required
+                  minLength={6}
+                  className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-green-500 transition-colors placeholder:text-gray-600"
+                />
+              </div>
+
+              {modalError && <p className="text-xs text-red-400 bg-red-500/10 px-3 py-2 rounded-lg border border-red-500/20">{modalError}</p>}
+
+              <button
+                type="submit"
+                disabled={authLoading}
+                className="w-full bg-green-500 hover:bg-green-600 text-white py-3.5 rounded-full font-semibold text-sm transition-all cursor-pointer disabled:opacity-60 mt-1"
+              >
+                {authLoading ? 'Aguarde...' : modalTab === 'signup' ? 'Criar conta' : 'Entrar'}
+              </button>
+            </form>
+
+            <button onClick={() => setShowModal(false)} className="absolute top-4 right-4 text-gray-500 hover:text-white text-xl cursor-pointer">×</button>
+          </div>
+        </div>
+      )}
 
       {/* FOOTER */}
       <footer className="bg-[#0D1117] px-6 py-10 text-center border-t border-white/5">
