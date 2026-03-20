@@ -119,7 +119,7 @@ export default function CompletarCadastro() {
           <form onSubmit={handleSubmit} className="flex flex-col items-center gap-5 w-full">
 
             {/* Boxes — expandem no casal */}
-            <div className={mode === 'casal' ? 'grid grid-cols-2 gap-4 w-full max-w-3xl' : 'flex flex-col gap-5 w-full max-w-md'}>
+            <div className={mode === 'casal' ? 'grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-3xl' : 'flex flex-col gap-5 w-full max-w-md'}>
 
             {/* Dados do usuário */}
             <div className="flex flex-col gap-4 p-5 bg-white/5 rounded-2xl border border-white/10">
