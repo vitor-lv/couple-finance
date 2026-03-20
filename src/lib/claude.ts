@@ -168,6 +168,73 @@ Agora pergunte de forma natural: ${nextQuestion}.`,
   }
 }
 
+export async function interpretOnboardingAnswer(
+  step: number,
+  message: string
+): Promise<{ value: string | number | boolean | null; display: string; valid: boolean }> {
+  // Texto livre — sem Claude
+  if (step === 0) {
+    const v = message.trim()
+    return { value: v, display: v, valid: v.length >= 1 }
+  }
+  if (step === 4) {
+    const v = message.trim()
+    return { value: v, display: v, valid: v.length >= 2 }
+  }
+
+  const stepContext: Record<number, { context: string; schema: string }> = {
+    1: {
+      context: 'O usuário informou sua renda mensal. Pode ser em linguagem natural (ex: "uns 5 mil", "ganho 3500 por mês", "em torno de 8k"). Extraia o valor numérico em reais.',
+      schema: '{"value": <número ou null se não entendeu>, "display": "R$ X.XXX", "valid": <true se extraiu valor>}',
+    },
+    2: {
+      context: 'O usuário informou o dia do mês que recebe salário/pagamento. Pode dizer "dia 5", "todo dia 10", "recebo no 15", "final do mês" (→ 30). Extraia apenas o número do dia (1-31).',
+      schema: '{"value": <número 1-31 ou null>, "display": "dia X", "valid": <true se extraiu dia>}',
+    },
+    3: {
+      context: 'O usuário respondeu se tem bônus ou 13º anual. Interprete qualquer forma de sim/não, ex: "tenho sim", "não tenho", "recebo PLR", "nada disso", "às vezes".',
+      schema: '{"value": <true ou false>, "display": <"sim" ou "não">, "valid": true}',
+    },
+    5: {
+      context: 'O usuário informou o valor da meta financeira. Pode ser "uns 20 mil", "50k", "cem mil", "100.000". Extraia o valor numérico em reais.',
+      schema: '{"value": <número ou null se não entendeu>, "display": "R$ XX.XXX", "valid": <true se extraiu valor>}',
+    },
+  }
+
+  const cfg = stepContext[step]
+  if (!cfg) return { value: null, display: '', valid: false }
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 8000)
+
+  try {
+    const response = await getAnthropic().messages.create(
+      {
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 80,
+        system: `${cfg.context}\nResponda APENAS JSON válido: ${cfg.schema}`,
+        messages: [{ role: 'user', content: message }],
+      },
+      { signal: controller.signal }
+    )
+
+    const text = response.content[0].type === 'text' ? response.content[0].text : ''
+    const match = text.match(/\{[\s\S]*\}/)
+    if (match) {
+      const parsed = JSON.parse(match[0])
+      return {
+        value: parsed.value ?? null,
+        display: parsed.display ?? String(parsed.value ?? ''),
+        valid: parsed.valid ?? parsed.value !== null,
+      }
+    }
+  } catch { /* fallback */ } finally {
+    clearTimeout(timeout)
+  }
+
+  return { value: null, display: '', valid: false }
+}
+
 export async function interpretCoupleChoice(message: string): Promise<'sozinho' | 'casal'> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 6000)

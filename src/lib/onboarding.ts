@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 import { sendTextMessage, createGroup } from './zapi'
-import { generateOnboardingMessage, interpretEditValue, interpretCoupleChoice } from './claude'
+import { generateOnboardingMessage, interpretEditValue, interpretCoupleChoice, interpretOnboardingAnswer } from './claude'
 
 interface User {
   id: string
@@ -87,7 +87,6 @@ export async function processOnboardingStep(
 
   switch (step) {
     case -1: {
-      // Interpreta "sozinho" ou "casal" com Claude
       const choice = await interpretCoupleChoice(message)
       if (choice === 'casal') {
         updates.onboarding_step = -2
@@ -101,13 +100,11 @@ export async function processOnboardingStep(
     }
 
     case -2: {
-      // Recebe o telefone do parceiro, cria casal e grupo
       const partnerPhone = message.replace(/\D/g, '')
       if (partnerPhone.length < 10 || partnerPhone.length > 13) {
         return `Por favor, me informe um número válido com DDD.\n(ex: 11999999999)`
       }
 
-      // Cria o casal
       const { data: couple, error: coupleError } = await supabase
         .from('couples')
         .insert({ chat_mode: 'group' })
@@ -118,15 +115,12 @@ export async function processOnboardingStep(
         return `Ops, tive um problema ao criar o grupo. Tente novamente.`
       }
 
-      // Cria grupo no WhatsApp
       const groupId = await createGroup('Finn 💑', [phone, partnerPhone])
 
-      // Atualiza o casal com o group_id
       if (groupId) {
         await supabase.from('couples').update({ group_id: groupId }).eq('id', couple.id)
       }
 
-      // Atualiza usuário atual
       await supabase.from('users').update({
         couple_id: couple.id,
         chat_mode: 'group',
@@ -134,7 +128,6 @@ export async function processOnboardingStep(
         onboarding_step: 0,
       }).eq('phone', phone)
 
-      // Verifica se o parceiro já existe no banco
       const { data: partnerUser } = await supabase
         .from('users')
         .select('*')
@@ -142,14 +135,12 @@ export async function processOnboardingStep(
         .maybeSingle()
 
       if (partnerUser) {
-        // Parceiro já cadastrado — vincula ao casal
         await supabase.from('users').update({
           couple_id: couple.id,
           chat_mode: 'group',
           group_id: groupId,
         }).eq('phone', partnerPhone)
       } else {
-        // Parceiro não cadastrado — cria registro para ele
         await supabase.from('users').insert({
           phone: partnerPhone,
           couple_id: couple.id,
@@ -160,7 +151,6 @@ export async function processOnboardingStep(
         })
       }
 
-      // Envia boas-vindas no grupo
       if (groupId) {
         const groupWelcome =
           `Oi! 💑 Criei esse grupo para fazermos o cadastro de vocês dois juntos.\n\n` +
@@ -173,48 +163,35 @@ export async function processOnboardingStep(
       return getOnboardingMessage(0, user.name ?? '')
     }
 
-    case 0: {
-      updates.nickname = message.trim()
-      break
-    }
-    case 1: {
-      const income = parseFloat(msg.replace(/[^\d.,]/g, '').replace(',', '.'))
-      if (isNaN(income) || income <= 0) {
-        return `Por favor, me informe um valor numérico. Ex: 5000`
+    // Steps 0-5: Claude interpreta linguagem natural
+    default: {
+      const interpreted = await interpretOnboardingAnswer(step, message)
+
+      if (!interpreted.valid) {
+        // Claude gera mensagem de pedido de esclarecimento
+        const clarifications: Record<number, string> = {
+          0: `Não entendi seu nome. Como você quer que eu te chame?`,
+          1: `Não consegui identificar o valor. Pode me dizer sua renda mensal? Ex: 5000`,
+          2: `Não entendi o dia. Qual dia do mês você costuma receber? Ex: 5, 10, 25`,
+          3: `Não entendi. Você recebe bônus ou 13º anual? Responde sim ou não 😊`,
+          4: `Pode descrever um pouco mais sua meta?`,
+          5: `Não entendi o valor. Qual o valor aproximado da meta? Ex: 10000`,
+        }
+        return clarifications[step] ?? `Não entendi. Pode repetir?`
       }
-      updates.monthly_income = income
-      break
-    }
-    case 2: {
-      const day = parseInt(msg.replace(/[^\d]/g, ''), 10)
-      if (isNaN(day) || day < 1 || day > 31) {
-        return `Por favor informe um dia válido entre 1 e 31. Ex: 5`
+
+      switch (step) {
+        case 0: updates.nickname = interpreted.value as string; break
+        case 1: updates.monthly_income = interpreted.value as number; break
+        case 2: updates.payment_day = interpreted.value as number; break
+        case 3: updates.has_bonus = interpreted.value as boolean; break
+        case 4: updates.goal_description = interpreted.value as string; break
+        case 5:
+          updates.goal_amount = interpreted.value as number
+          updates.onboarding_completed = true
+          nextStep = 6
+          break
       }
-      updates.payment_day = day
-      break
-    }
-    case 3: {
-      if (!['sim', 'não', 'nao', 's', 'n'].includes(msg)) {
-        return `Por favor responda: sim ou não`
-      }
-      updates.has_bonus = ['sim', 's'].includes(msg)
-      break
-    }
-    case 4: {
-      if (message.trim().length < 3) {
-        return `Por favor descreva sua meta com mais detalhes.`
-      }
-      updates.goal_description = message.trim()
-      break
-    }
-    case 5: {
-      const amount = parseFloat(msg.replace(/[^\d.,]/g, '').replace(',', '.'))
-      if (isNaN(amount) || amount <= 0) {
-        return `Por favor, me informe um valor numérico. Ex: 10000`
-      }
-      updates.goal_amount = amount
-      updates.onboarding_completed = true
-      nextStep = 6
       break
     }
   }
