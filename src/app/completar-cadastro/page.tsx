@@ -188,6 +188,9 @@ export default function CompletarCadastro() {
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-5">
 
+            {/* Boxes lado a lado no modo casal */}
+            <div className={mode === 'casal' ? 'grid grid-cols-2 gap-4' : 'flex flex-col gap-5'}>
+
             {/* Dados do usuário */}
             <div className="flex flex-col gap-4 p-5 bg-white/5 rounded-2xl border border-white/10">
               <p className="text-xs font-semibold text-green-400 uppercase tracking-wider">Seus dados</p>
@@ -233,7 +236,7 @@ export default function CompletarCadastro() {
 
             {/* Dados do parceiro — só no modo casal */}
             {mode === 'casal' && (
-              <div className="flex flex-col gap-4 p-5 bg-white/5 rounded-2xl border border-white/10">
+              <div className="flex flex-col gap-4 p-5 bg-white/5 rounded-2xl border border-white/10 border-green-500/20">
                 <p className="text-xs font-semibold text-green-400 uppercase tracking-wider">Dados do parceiro(a)</p>
 
                 <div className="flex flex-col gap-1.5">
@@ -273,6 +276,8 @@ export default function CompletarCadastro() {
                 </div>
               </div>
             )}
+
+            </div>{/* fim grid */}
 
             {error && (
               <p className="text-xs text-red-400 text-center bg-red-500/10 py-3 px-4 rounded-xl border border-red-500/20">
