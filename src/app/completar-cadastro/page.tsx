@@ -144,7 +144,7 @@ export default function CompletarCadastro() {
       </header>
 
       <div className="flex-1 flex items-start justify-center px-4 py-10">
-        <div className="w-full max-w-md">
+        <div className={`w-full ${mode === 'casal' ? 'max-w-3xl' : 'max-w-md'}`}>
 
           {/* Título */}
           <div className="mb-8">
