@@ -27,7 +27,8 @@ interface ZAPIMessage {
 }
 
 async function saveAndReply(
-  phone: string,
+  userPhone: string,
+  replyTo: string,
   senderName: string,
   userContent: string,
   rawMessage: object,
@@ -41,7 +42,7 @@ async function saveAndReply(
   }
 ) {
   await supabase.from('messages').insert({
-    phone,
+    phone: userPhone,
     sender_name: senderName,
     role: 'user',
     content: userContent,
@@ -49,15 +50,15 @@ async function saveAndReply(
   })
 
   await supabase.from('messages').insert({
-    phone,
+    phone: userPhone,
     sender_name: 'assistant',
     role: 'assistant',
     content: result.resposta,
   })
 
   if ((result.tipo === 'gasto' || result.tipo === 'receita') && result.valor) {
-    await supabase.from('transactions').insert({
-      phone,
+    const { error: txError } = await supabase.from('transactions').insert({
+      phone:       userPhone,
       sender_name: senderName,
       tipo:        result.tipo,
       valor:       result.valor,
@@ -68,9 +69,14 @@ async function saveAndReply(
       category:    result.categoria,
       description: result.descricao,
     })
+    if (txError) {
+      console.error('❌ Erro ao salvar transaction:', JSON.stringify(txError))
+    } else {
+      console.log(`✅ Transaction salva: ${result.tipo} R$${result.valor} (${userPhone})`)
+    }
   }
 
-  await sendTextMessage(phone, result.resposta)
+  await sendTextMessage(replyTo, result.resposta)
 }
 
 export async function POST(request: NextRequest) {
@@ -117,7 +123,7 @@ export async function POST(request: NextRequest) {
       }
       const imageBase64 = Buffer.from(await imageResponse.arrayBuffer()).toString('base64')
       const result = await processFinanceImage(imageBase64, body.image.caption)
-      await saveAndReply(replyTo, senderName, body.image.caption || '[imagem]', rawMessage, result)
+      await saveAndReply(userPhone, replyTo, senderName, body.image.caption || '[imagem]', rawMessage, result)
       return NextResponse.json({ status: 'ok' })
     }
 
@@ -330,7 +336,7 @@ export async function POST(request: NextRequest) {
       await supabase.from('users').update({ monthly_income: result.valor }).eq('phone', phone)
     }
 
-    await saveAndReply(replyTo, senderName, message, rawMessage, result)
+    await saveAndReply(phone, replyTo, senderName, message, rawMessage, result)
     return NextResponse.json({ status: 'ok' })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error'
