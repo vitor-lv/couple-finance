@@ -13,6 +13,7 @@ interface User {
   onboarding_completed: boolean
   editing_field: string | null
   monthly_income: number | null
+  monthly_savings_goal: number | null
   payment_day: number | null
   employment_type: string | null  // repurposed: stores goal_category
   has_bonus: boolean | null
@@ -191,11 +192,10 @@ export async function processOnboardingStep(phone: string, message: string, user
         )
       }
 
-      // Meta não-emergência: salva goal_amount e conclui
+      // Meta não-emergência: salva goal_amount e vai para step 4 (poupança mensal)
       const updates: Record<string, unknown> = {
         goal_amount: value,
-        onboarding_step: 5,
-        onboarding_completed: true,
+        onboarding_step: 4,
       }
 
       if (isCouple && user.couple_id) {
@@ -204,9 +204,9 @@ export async function processOnboardingStep(phone: string, message: string, user
         await supabase.from('users').update(updates).eq('phone', phone)
       }
 
-      const nick = user.nickname ?? user.name ?? 'você'
-      const goalDesc = user.goal_description ?? 'sua meta'
-      return conclusionMessage(nick, goalDesc, value, isCouple)
+      return isCouple
+        ? `Anotado! 💪 E quanto vocês querem guardar por mês para chegar nessa meta? (ex: 500)`
+        : `Anotado! 💪 E quanto você quer guardar por mês para chegar nessa meta? (ex: 500)`
     }
 
     // ── Step 3: Confirmação do valor sugerido (só reserva de emergência) ──────
@@ -221,6 +221,31 @@ export async function processOnboardingStep(phone: string, message: string, user
 
       const updates: Record<string, unknown> = {
         goal_amount: finalGoal,
+        onboarding_step: 4,
+      }
+
+      if (isCouple && user.couple_id) {
+        await supabase.from('users').update(updates).eq('couple_id', user.couple_id)
+      } else {
+        await supabase.from('users').update(updates).eq('phone', phone)
+      }
+
+      return isCouple
+        ? `Perfeito! 💪 E quanto vocês querem guardar por mês para construir essa reserva? (ex: 500)`
+        : `Perfeito! 💪 E quanto você quer guardar por mês para construir essa reserva? (ex: 500)`
+    }
+
+    // ── Step 4: Meta de poupança mensal ──────────────────────────────────────
+    case 4: {
+      const value = await interpretMoneyValue(message)
+      if (!value || value <= 0) {
+        return isCouple
+          ? `Não entendi 😅 Quanto vocês querem guardar por mês? (ex: 500)`
+          : `Não entendi 😅 Quanto você quer guardar por mês? (ex: 500)`
+      }
+
+      const updates: Record<string, unknown> = {
+        monthly_savings_goal: value,
         onboarding_step: 5,
         onboarding_completed: true,
       }
@@ -232,8 +257,9 @@ export async function processOnboardingStep(phone: string, message: string, user
       }
 
       const nick = user.nickname ?? user.name ?? 'você'
-      const goalDesc = user.goal_description ?? 'Reserva de emergência'
-      return conclusionMessage(nick, goalDesc, finalGoal, isCouple)
+      const goalDesc = user.goal_description ?? 'sua meta'
+      const goalAmount = user.goal_amount ?? value
+      return conclusionMessage(nick, goalDesc, goalAmount, isCouple)
     }
 
     default:
@@ -244,11 +270,12 @@ export async function processOnboardingStep(phone: string, message: string, user
 // ─── EDIÇÃO DE PERFIL ────────────────────────────────────────────────────────
 
 const EDIT_FIELDS: Record<string, { column: string; label: string; question: string }> = {
-  '1': { column: 'nickname',         label: 'Nome (apelido)',   question: 'Qual é o seu novo apelido?' },
-  '2': { column: 'monthly_income',   label: 'Renda mensal',     question: 'Qual é a sua nova renda mensal? (ex: 6000)' },
-  '3': { column: 'goal_description', label: 'Meta financeira',  question: 'Qual é a sua nova meta financeira? (ex: viagem, reserva de emergência)' },
-  '4': { column: 'goal_amount',      label: 'Valor da meta',    question: 'Qual é o novo valor da meta? (ex: 15000)' },
-  '5': { column: 'fixed_expenses',   label: 'Gastos fixos',     question: 'Qual é o total dos seus gastos fixos mensais? (ex: 2500)' },
+  '1': { column: 'nickname',              label: 'Nome (apelido)',      question: 'Qual é o seu novo apelido?' },
+  '2': { column: 'monthly_income',        label: 'Renda mensal',        question: 'Qual é a sua nova renda mensal? (ex: 6000)' },
+  '3': { column: 'goal_description',      label: 'Meta financeira',     question: 'Qual é a sua nova meta financeira? (ex: viagem, reserva de emergência)' },
+  '4': { column: 'goal_amount',           label: 'Valor da meta',       question: 'Qual é o novo valor da meta? (ex: 15000)' },
+  '5': { column: 'fixed_expenses',        label: 'Gastos fixos',        question: 'Qual é o total dos seus gastos fixos mensais? (ex: 2500)' },
+  '6': { column: 'monthly_savings_goal',  label: 'Poupança mensal',     question: 'Quanto você quer guardar por mês? (ex: 500)' },
 }
 
 export function getEditMenu(): string {
@@ -258,7 +285,8 @@ export function getEditMenu(): string {
     `2️⃣ Renda mensal\n` +
     `3️⃣ Meta financeira\n` +
     `4️⃣ Valor da meta\n` +
-    `5️⃣ Gastos fixos\n\n` +
+    `5️⃣ Gastos fixos\n` +
+    `6️⃣ Poupança mensal\n\n` +
     `Responda com o número do campo que quer editar.`
   )
 }
@@ -295,6 +323,7 @@ export function formatUserProfile(user: User): string {
     `👤 *Seu perfil no Finn*\n`,
     `Nome: ${user.nickname ?? user.name ?? 'não informado'}`,
     `Renda mensal: ${money(user.monthly_income)}`,
+    `Poupança mensal: ${money(user.monthly_savings_goal)}`,
     `Meta: ${user.goal_description ?? 'não informada'}`,
     `Valor da meta: ${money(user.goal_amount)}`,
     `\nPara editar, me diga o que quer atualizar.`,
