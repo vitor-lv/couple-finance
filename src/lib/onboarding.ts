@@ -14,6 +14,7 @@ interface User {
   editing_field: string | null
   monthly_income: number | null
   monthly_savings_goal: number | null
+  financial_score: number | null
   payment_day: number | null
   employment_type: string | null  // repurposed: stores goal_category
   has_bonus: boolean | null
@@ -26,6 +27,20 @@ interface Couple {
   id: string
   chat_mode: string | null
   group_id: string | null
+}
+
+// ─── FINANCIAL SCORE ─────────────────────────────────────────────────────────
+
+export function calculateFinancialScore(
+  income: number | null,
+  savingsGoal: number | null,
+  totalSpent: number
+): number {
+  if (!income || income <= 0) return 50
+  const available = Math.max(1, income - (savingsGoal ?? 0))
+  const ratio = totalSpent / available
+  if (ratio <= 1) return Math.round(50 + (1 - ratio) * 50)
+  return Math.round(Math.max(0, 50 * (1 - (ratio - 1) * 2)))
 }
 
 // ─── MENSAGEM DE BOAS-VINDAS (step -1 → step 0) ──────────────────────────────
@@ -317,8 +332,16 @@ export async function processEditValue(phone: string, rawValue: string, editingF
 
 // ─── PERFIL ───────────────────────────────────────────────────────────────────
 
+function scoreEmoji(score: number): string {
+  if (score >= 80) return '🟢'
+  if (score >= 60) return '🟡'
+  if (score >= 40) return '🟠'
+  return '🔴'
+}
+
 export function formatUserProfile(user: User): string {
   const money = (v: number | null) => v ? `R$ ${v.toLocaleString('pt-BR')}` : 'não informado'
+  const score = user.financial_score ?? 50
   const lines = [
     `👤 *Seu perfil no Finn*\n`,
     `Nome: ${user.nickname ?? user.name ?? 'não informado'}`,
@@ -326,6 +349,7 @@ export function formatUserProfile(user: User): string {
     `Poupança mensal: ${money(user.monthly_savings_goal)}`,
     `Meta: ${user.goal_description ?? 'não informada'}`,
     `Valor da meta: ${money(user.goal_amount)}`,
+    `\nScore financeiro: ${scoreEmoji(score)} *${score}/100*`,
     `\nPara editar, me diga o que quer atualizar.`,
   ]
   return lines.join('\n')

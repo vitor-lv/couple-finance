@@ -240,7 +240,8 @@ CONTEXTO:
 - Renda mensal: R$ ${context?.monthlyIncome || 0}
 - Meta de poupança: R$ ${context?.monthlySavingsGoal || 0}/mês
 - Gasto total esse mês: R$ ${context?.totalGastoMes || 0}
-- Margem restante: R$ ${((context?.monthlyIncome || 0) - (context?.totalGastoMes || 0) - (context?.monthlySavingsGoal || 0)).toFixed(0)}`,
+- Margem restante: R$ ${((context?.monthlyIncome || 0) - (context?.totalGastoMes || 0) - (context?.monthlySavingsGoal || 0)).toFixed(0)}
+- Score financeiro atual: ${context?.financialScore ?? 50}/100`,
         messages: [
           ...history,
           { role: 'user', content: message },

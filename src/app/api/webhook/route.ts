@@ -9,6 +9,7 @@ import {
   processEditChoice,
   processEditValue,
   formatUserProfile,
+  calculateFinancialScore,
 } from '@/lib/onboarding'
 
 interface ZAPIMessage {
@@ -299,6 +300,7 @@ export async function POST(request: NextRequest) {
       monthlyIncome: user.monthly_income ?? undefined,
       monthlySavingsGoal: user.monthly_savings_goal ?? undefined,
       totalGastoMes,
+      financialScore: user.financial_score ?? 50,
     })
 
     // Ações de perfil detectadas pelo Claude
@@ -352,6 +354,13 @@ export async function POST(request: NextRequest) {
     }
 
     await saveAndReply(phone, replyTo, senderName, message, rawMessage, result)
+
+    if (result.tipo === 'gasto' && result.valor) {
+      const newTotal = totalGastoMes + result.valor
+      const newScore = calculateFinancialScore(user.monthly_income, user.monthly_savings_goal, newTotal)
+      await supabase.from('users').update({ financial_score: newScore }).eq('phone', phone)
+    }
+
     return NextResponse.json({ status: 'ok' })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error'
