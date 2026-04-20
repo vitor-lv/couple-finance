@@ -33,6 +33,7 @@ export async function POST(request: NextRequest) {
         name: userName,
         email: email ?? null,
         phone: cleanPhone,
+        chat_mode: 'individual',
         onboarding_completed: false,
         onboarding_step: -1,
       })

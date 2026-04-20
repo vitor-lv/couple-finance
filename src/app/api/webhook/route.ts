@@ -280,10 +280,25 @@ export async function POST(request: NextRequest) {
       .reverse()
       .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }))
 
+    const now = new Date()
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+
+    const { data: monthTransactions } = await supabase
+      .from('transactions')
+      .select('valor')
+      .eq('phone', phone)
+      .eq('tipo', 'gasto')
+      .gte('created_at', startOfMonth)
+
+    const totalGastoMes = (monthTransactions ?? []).reduce((sum, t) => sum + (t.valor ?? 0), 0)
+
     const result = await processFinanceMessage(message, chatHistory, {
       senderName,
       coupleGoal: user.goal_description ?? undefined,
       coupleGoalAmount: user.goal_amount ?? undefined,
+      monthlyIncome: user.monthly_income ?? undefined,
+      monthlySavingsGoal: user.monthly_savings_goal ?? undefined,
+      totalGastoMes,
     })
 
     // Ações de perfil detectadas pelo Claude

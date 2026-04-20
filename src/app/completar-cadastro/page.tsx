@@ -42,7 +42,7 @@ export default function CompletarCadastro() {
       const res = await fetch('/api/completar-cadastro', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, phone, partnerName, partnerPhone, partnerEmail, mode }),
+        body: JSON.stringify({ name, email, phone, partnerName, partnerPhone, partnerEmail, mode }),
       })
 
       const data = await res.json()

@@ -177,9 +177,13 @@ REGRAS:
 - Para consultas, seja mais detalhado e use formatação com emojis
 - Sempre confirme o valor e categoria registrados
 - Se o valor ou descrição não estiver claro, peça confirmação
-- NUNCA mostre progresso de meta após registrar um gasto comum — gasto não é poupança
-- Só mencione meta/progresso se o usuário perguntar explicitamente sobre a meta
-- Nunca invente valores de progresso — use apenas dados que o usuário fornecer
+- Nunca invente valores — use apenas dados do contexto
+- Após registrar um gasto, mostre a margem restante do mês de forma simples e motivadora
+- Se a margem estiver positiva e confortável: confirma o gasto e mostra quanto ainda sobra
+- Se a margem estiver apertada (menos de 20% da renda): confirma o gasto e dá um alerta leve, sem drama
+- Se a margem estiver negativa: confirma o gasto e avisa com cuidado que o limite do mês foi ultrapassado
+- Nunca mencione a meta de poupança como algo que o usuário "perdeu" — seja encorajador
+- Só entre em detalhes sobre a meta se o usuário perguntar explicitamente
 
 Responda APENAS em JSON válido, sem markdown:
 {
@@ -216,6 +220,9 @@ export async function processFinanceMessage(
     coupleGoal?: string
     coupleGoalAmount?: number
     financialScore?: number
+    monthlyIncome?: number
+    monthlySavingsGoal?: number
+    totalGastoMes?: number
   }
 ) {
   const controller = new AbortController()
@@ -230,7 +237,10 @@ export async function processFinanceMessage(
 
 CONTEXTO:
 - Quem está falando: ${context?.senderName || 'usuário'}
-- Meta atual: ${context?.coupleGoal || 'não definida'} (R$ ${context?.coupleGoalAmount || 0})`,
+- Renda mensal: R$ ${context?.monthlyIncome || 0}
+- Meta de poupança: R$ ${context?.monthlySavingsGoal || 0}/mês
+- Gasto total esse mês: R$ ${context?.totalGastoMes || 0}
+- Margem restante: R$ ${((context?.monthlyIncome || 0) - (context?.totalGastoMes || 0) - (context?.monthlySavingsGoal || 0)).toFixed(0)}`,
         messages: [
           ...history,
           { role: 'user', content: message },
