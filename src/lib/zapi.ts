@@ -107,10 +107,14 @@ export async function sendOptionList(phone: string, message: string, optionList:
       body: JSON.stringify({ phone, message, optionList }),
       signal: controller.signal,
     })
-    if (!response.ok) {
-      throw new Error(`Z-API error: ${response.status} ${await response.text()}`)
+    const text = await response.text()
+    if (!response.ok) throw new Error(`Z-API send-option-list error: ${response.status} ${text}`)
+    let data: Record<string, unknown>
+    try { data = JSON.parse(text) } catch { throw new Error(`Z-API send-option-list invalid JSON: ${text}`) }
+    if (!data.messageId && !data.zaapId && !data.id) {
+      throw new Error(`Z-API send-option-list sem messageId: ${text}`)
     }
-    return response.json()
+    return data
   } finally {
     clearTimeout(timeout)
   }
@@ -126,10 +130,14 @@ export async function sendButtonList(phone: string, message: string, buttons: Bu
       body: JSON.stringify({ phone, message, buttonList: { buttons } }),
       signal: controller.signal,
     })
-    if (!response.ok) {
-      throw new Error(`Z-API error: ${response.status} ${await response.text()}`)
+    const text = await response.text()
+    if (!response.ok) throw new Error(`Z-API send-button-list error: ${response.status} ${text}`)
+    let data: Record<string, unknown>
+    try { data = JSON.parse(text) } catch { throw new Error(`Z-API send-button-list invalid JSON: ${text}`) }
+    if (!data.messageId && !data.zaapId && !data.id) {
+      throw new Error(`Z-API send-button-list sem messageId: ${text}`)
     }
-    return response.json()
+    return data
   } finally {
     clearTimeout(timeout)
   }
