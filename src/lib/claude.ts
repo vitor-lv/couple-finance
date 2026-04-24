@@ -199,6 +199,10 @@ CAPACIDADES ESPECIAIS:
 - Nunca diga que não consegue ler imagens — você sempre consegue
 - Se a imagem tiver múltiplas transações (ex: extrato, fatura), registre todas de uma vez
 
+MÚLTIPLAS TRANSAÇÕES:
+- Quando o usuário confirmar ou registrar múltiplos gastos/receitas de uma vez (ex: "registra ambos", "confirma os dois", "registra como X e Y"), use tipo: "multiplos_gastos"
+- Nesse caso, inclua uma lista "transacoes" com cada item e um campo "resposta" resumindo tudo
+
 CATEGORIAS: alimentação, transporte, moradia, saúde, lazer, educação, vestuário, assinaturas, outros
 
 REGRAS:
@@ -216,21 +220,52 @@ REGRAS:
 
 Responda APENAS em JSON válido, sem markdown:
 {
-  "tipo": "gasto" | "receita" | "consulta" | "ver_perfil" | "editar_perfil" | "resetar_perfil" | "salvar_renda" | "outro",
+  "tipo": "gasto" | "receita" | "consulta" | "ver_perfil" | "editar_perfil" | "resetar_perfil" | "salvar_renda" | "multiplos_gastos" | "outro",
   "valor": number | null,
   "categoria": string | null,
   "descricao": string,
   "data": string | null,
-  "resposta": string
+  "resposta": string,
+  "transacoes": [{"tipo": "gasto"|"receita", "valor": number, "categoria": string, "descricao": string, "data": string|null}] | null
 }`
 
-function parseFinanceResponse(text: string, fallbackContent: string) {
-  try {
-    const jsonMatch = text.match(/\{[\s\S]*\}/)
-    if (jsonMatch) return JSON.parse(jsonMatch[0])
-  } catch {
-    // fallback
+type TransacaoItem = {
+  tipo: string
+  valor: number | null
+  categoria: string | null
+  descricao: string
+  data: string | null
+}
+
+export type FinanceResult = {
+  tipo: string
+  valor?: number | null
+  categoria?: string | null
+  descricao?: string
+  data?: string | null
+  resposta: string
+  transacoes?: TransacaoItem[] | null
+}
+
+function extractFirstJson(text: string): FinanceResult | null {
+  const start = text.indexOf('{')
+  if (start === -1) return null
+  let depth = 0
+  for (let i = start; i < text.length; i++) {
+    if (text[i] === '{') depth++
+    else if (text[i] === '}') {
+      depth--
+      if (depth === 0) {
+        try { return JSON.parse(text.slice(start, i + 1)) } catch { return null }
+      }
+    }
   }
+  return null
+}
+
+function parseFinanceResponse(text: string, fallbackContent: string): FinanceResult {
+  const parsed = extractFirstJson(text)
+  if (parsed) return parsed
   return {
     tipo: 'outro',
     valor: null,
@@ -238,6 +273,7 @@ function parseFinanceResponse(text: string, fallbackContent: string) {
     descricao: fallbackContent,
     data: null,
     resposta: text,
+    transacoes: null,
   }
 }
 

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { sendTextMessage } from '@/lib/zapi'
 import { TIPO } from '@/lib/constants'
+import type { FinanceResult } from '@/lib/claude'
 
 const DUPLICATE_KEY_ERROR_CODE = '23505'
 
@@ -60,14 +61,7 @@ export async function saveAndReply(
   senderName: string,
   userContent: string,
   rawMessage: object,
-  result: {
-    tipo: string
-    valor?: number | null
-    categoria?: string | null
-    descricao?: string
-    data?: string | null
-    resposta: string
-  }
+  result: FinanceResult
 ): Promise<boolean> {
   const inserted = await insertUserMessage(userPhone, senderName, userContent, rawMessage)
   if (!inserted) return false
@@ -82,7 +76,26 @@ export async function saveAndReply(
     throw new Error(`Erro ao salvar resposta do assistant: ${assistantError.message}`)
   }
 
-  if ((result.tipo === TIPO.GASTO || result.tipo === TIPO.RECEITA) && result.valor) {
+  if (result.tipo === TIPO.MULTIPLOS_GASTOS && result.transacoes?.length) {
+    for (const tx of result.transacoes) {
+      if ((tx.tipo === TIPO.GASTO || tx.tipo === TIPO.RECEITA) && tx.valor) {
+        const { error: txError } = await supabase.from('transactions').insert({
+          phone:       userPhone,
+          sender_name: senderName,
+          tipo:        tx.tipo,
+          valor:       tx.valor,
+          categoria:   tx.categoria,
+          descricao:   tx.descricao,
+          data:        tx.data ?? new Date().toISOString().split('T')[0],
+        })
+        if (txError) {
+          console.error('❌ Erro ao salvar transaction:', JSON.stringify(txError))
+        } else {
+          console.log(`✅ Transaction salva: ${tx.tipo} R$${tx.valor} (${userPhone})`)
+        }
+      }
+    }
+  } else if ((result.tipo === TIPO.GASTO || result.tipo === TIPO.RECEITA) && result.valor) {
     const { error: txError } = await supabase.from('transactions').insert({
       phone:       userPhone,
       sender_name: senderName,

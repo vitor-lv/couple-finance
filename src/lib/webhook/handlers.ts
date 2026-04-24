@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { sendTextMessage } from '@/lib/zapi'
-import { processFinanceMessage } from '@/lib/claude'
+import { processFinanceMessage, type FinanceResult } from '@/lib/claude'
 import {
   User,
   getWelcomeMessage,
@@ -229,7 +229,16 @@ export async function handleFinance({
   const saved = await saveAndReply(phone, replyTo, senderName, message, rawMessage, result)
   if (!saved) return NextResponse.json({ status: 'ignored_duplicate' })
 
-  if (result.tipo === TIPO.GASTO && result.valor) {
+  if (result.tipo === TIPO.MULTIPLOS_GASTOS && result.transacoes?.length) {
+    const extraGastos = result.transacoes
+      .filter((tx: { tipo: string; valor: number | null }) => tx.tipo === TIPO.GASTO && tx.valor)
+      .reduce((sum: number, tx: { valor: number | null }) => sum + (tx.valor ?? 0), 0)
+    if (extraGastos > 0) {
+      const newTotal = totalGastoMes + extraGastos
+      const newScore = calculateFinancialScore(user.monthly_income, user.monthly_savings_goal, newTotal)
+      await supabase.from('users').update({ financial_score: newScore }).eq('phone', phone)
+    }
+  } else if (result.tipo === TIPO.GASTO && result.valor) {
     const newTotal = totalGastoMes + result.valor
     const newScore = calculateFinancialScore(user.monthly_income, user.monthly_savings_goal, newTotal)
     await supabase.from('users').update({ financial_score: newScore }).eq('phone', phone)
