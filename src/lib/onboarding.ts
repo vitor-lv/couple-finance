@@ -365,7 +365,7 @@ export async function processOnboardingStep(phone: string, message: string, user
       await supabase.from('users').update({ monthly_income: value, onboarding_step: 4 }).eq('phone', phone)
 
       const profile = (user.goal_category as SavingsProfile) ?? 'nada'
-      return savingsOptionsMessage(value, profile)
+      return savingsOptionsInteractive(value, profile)
     }
 
     // ── Step 4: Casal → poupança mensal | Solo → escolhe opção de poupança ───
@@ -416,7 +416,7 @@ export async function processOnboardingStep(phone: string, message: string, user
       // Opção inválida: repete as opções
       const income = user.monthly_income ?? 0
       const profile = (user.goal_category as SavingsProfile) ?? 'nada'
-      return savingsOptionsMessage(income, profile)
+      return savingsOptionsInteractive(income, profile)
     }
 
     // ── Step 5: Solo → valor personalizado de poupança ───────────────────────

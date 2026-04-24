@@ -21,6 +21,15 @@ interface ZAPIMessage {
   audio?: { audioUrl: string; seconds?: number }
   type: string
   chatName: string
+  listResponseMessage?: {
+    title?: string
+    singleSelectReply?: { selectedRowId?: string }
+  }
+  buttonsResponseMessage?: {
+    selectedButtonId?: string
+    selectedStableId?: string
+    selectedDisplayText?: string
+  }
 }
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024
@@ -107,6 +116,23 @@ export async function POST(request: NextRequest) {
     }
 
     if (body.fromMe) return NextResponse.json({ status: 'ignored' })
+
+    // Normaliza respostas interativas (lista ou botão) como texto
+    if (body.type === 'ListResponseMessage') {
+      const id = body.listResponseMessage?.singleSelectReply?.selectedRowId
+      const title = body.listResponseMessage?.title
+      const selected = id ?? title
+      if (!selected) return NextResponse.json({ status: 'ignored' })
+      body.text = { message: selected }
+      body.type = 'ReceivedCallback'
+    }
+
+    if (body.type === 'ButtonsResponseMessage') {
+      const id = body.buttonsResponseMessage?.selectedButtonId ?? body.buttonsResponseMessage?.selectedStableId
+      if (!id) return NextResponse.json({ status: 'ignored' })
+      body.text = { message: id }
+      body.type = 'ReceivedCallback'
+    }
 
     const isGroup = body.isGroup === true
     const groupId = isGroup ? body.phone : null
