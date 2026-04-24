@@ -1,16 +1,5 @@
 import { supabase } from './supabase'
 import { interpretNickname, interpretGoal, interpretMoneyValue, interpretGoalConfirmation, interpretEditValue } from './claude'
-import type { OptionList, ButtonItem } from './zapi'
-
-export type OnboardingInteractive =
-  | { kind: 'list'; message: string; optionList: OptionList; fallbackText: string }
-  | { kind: 'buttons'; message: string; buttons: ButtonItem[]; fallbackText: string }
-
-export type OnboardingMessage = string | OnboardingInteractive
-
-export function messageText(m: OnboardingMessage): string {
-  return typeof m === 'string' ? m : m.message
-}
 
 export interface User {
   id: string
@@ -82,34 +71,16 @@ function extractNumberChoice(message: string, max: number): number | null {
 
 type SavingsProfile = 'nada' | 'sobra' | 'guarda'
 
-function savingsOptionsInteractive(income: number, profile: SavingsProfile): OnboardingInteractive {
+function savingsOptionsMessage(income: number, profile: SavingsProfile): string {
   const percents = profile === 'nada' ? [1, 2, 5] : profile === 'sobra' ? [5, 8, 10] : [10, 15, 20]
   const opts = percents.map(p => Math.round(income * p / 100))
-  const fmt = (v: number) => v.toLocaleString('pt-BR')
-  return {
-    kind: 'list',
-    message: 'Pra começar leve, faz mais sentido pra você guardar:',
-    optionList: {
-      title: 'Quanto guardar por mês',
-      buttonLabel: 'Ver opções',
-      sections: [{
-        title: 'Escolha uma opção',
-        rows: [
-          { id: '1', title: `R$ ${fmt(opts[0])} por mês`, description: `${percents[0]}% da sua renda` },
-          { id: '2', title: `R$ ${fmt(opts[1])} por mês`, description: `${percents[1]}% da sua renda` },
-          { id: '3', title: `R$ ${fmt(opts[2])} por mês`, description: `${percents[2]}% da sua renda` },
-          { id: '4', title: 'Outro valor', description: 'Eu digito o valor que quero' },
-        ],
-      }],
-    },
-    fallbackText: (
-      `Pra começar leve, faz mais sentido pra você guardar:\n\n` +
-      `1️⃣ R$ ${fmt(opts[0])} por mês (${percents[0]}%)\n` +
-      `2️⃣ R$ ${fmt(opts[1])} por mês (${percents[1]}%)\n` +
-      `3️⃣ R$ ${fmt(opts[2])} por mês (${percents[2]}%)\n` +
-      `4️⃣ Outro valor`
-    ),
-  }
+  return (
+    `Pra começar leve, faz mais sentido pra você guardar:\n\n` +
+    `1️⃣ R$ ${opts[0].toLocaleString('pt-BR')} por mês (${percents[0]}%)\n` +
+    `2️⃣ R$ ${opts[1].toLocaleString('pt-BR')} por mês (${percents[1]}%)\n` +
+    `3️⃣ R$ ${opts[2].toLocaleString('pt-BR')} por mês (${percents[2]}%)\n` +
+    `4️⃣ Outro valor`
+  )
 }
 
 function conclusionMessageSolo(nickname: string, value: number, profile: SavingsProfile): string {
@@ -162,7 +133,7 @@ function conclusionMessageCouple(nickname: string, goalDescription: string, goal
 
 // ─── PROCESSAMENTO DO ONBOARDING ─────────────────────────────────────────────
 
-export async function processOnboardingStep(phone: string, message: string, user: User): Promise<OnboardingMessage> {
+export async function processOnboardingStep(phone: string, message: string, user: User): Promise<string> {
   const step = user.onboarding_step
   const isCouple = !!user.couple_id
 
@@ -192,39 +163,20 @@ export async function processOnboardingStep(phone: string, message: string, user
         }
 
         const partnerNick = partner?.nickname ?? partner?.name ?? 'parceiro(a)'
-        return {
-          kind: 'list',
-          message: `Perfeito ${nickname} e ${partnerNick}! 😊\n\nQual é a maior meta financeira de vocês como casal?`,
-          optionList: {
-            title: 'Meta do casal',
-            buttonLabel: 'Ver metas',
-            sections: [{
-              title: 'Escolha uma meta',
-              rows: [
-                { id: 'reserva_emergencia', title: 'Reserva de emergência', description: '3 a 6 meses de renda guardados' },
-                { id: 'viagem', title: 'Viagem', description: 'Passeio nacional ou internacional' },
-                { id: 'casa_propria', title: 'Casa própria', description: 'Entrada ou financiamento' },
-                { id: 'casamento', title: 'Casamento / Festa', description: 'Cerimônia e celebração' },
-                { id: 'carro', title: 'Carro', description: 'Compra ou entrada' },
-                { id: 'outro', title: 'Outro objetivo', description: 'Me conta qual é' },
-              ],
-            }],
-          },
-          fallbackText: `Perfeito ${nickname} e ${partnerNick}! 😊\n\nQual é a maior meta financeira de vocês como casal?\n(ex: reserva de emergência, viagem, casa própria, casamento)`,
-        }
+        return (
+          `Perfeito ${nickname} e ${partnerNick}! 😊\n\n` +
+          `Qual é a maior meta financeira de vocês como casal?\n` +
+          `(ex: reserva de emergência, viagem, casa própria, casamento)`
+        )
       }
 
-      // Solo: mostra opções de missão como botões
-      return {
-        kind: 'buttons',
-        message: `Boa, ${nickname}! Qual é a sua principal missão hoje?`,
-        buttons: [
-          { id: '1', label: 'Controlar meus gastos' },
-          { id: '2', label: 'Começar a guardar' },
-          { id: '3', label: 'Juntar pra um objetivo' },
-        ],
-        fallbackText: `Boa, ${nickname}! Qual é a sua principal missão hoje?\n\n1️⃣ Controlar meus gastos no dia a dia\n2️⃣ Começar a guardar dinheiro\n3️⃣ Juntar dinheiro pra um objetivo`,
-      }
+      // Solo: mostra opções de missão
+      return (
+        `Boa, ${nickname}! Qual é a sua principal missão hoje?\n\n` +
+        `1️⃣ Controlar meus gastos no dia a dia\n` +
+        `2️⃣ Começar a guardar dinheiro\n` +
+        `3️⃣ Juntar dinheiro pra um objetivo`
+      )
     }
 
     // ── Step 1: Casal → meta | Solo → escolha de missão ──────────────────────
@@ -375,7 +327,7 @@ export async function processOnboardingStep(phone: string, message: string, user
       await supabase.from('users').update({ monthly_income: value, onboarding_step: 4 }).eq('phone', phone)
 
       const profile = (user.goal_category as SavingsProfile) ?? 'nada'
-      return savingsOptionsInteractive(value, profile)
+      return savingsOptionsMessage(value, profile)
     }
 
     // ── Step 4: Casal → poupança mensal | Solo → escolhe opção de poupança ───
@@ -426,7 +378,7 @@ export async function processOnboardingStep(phone: string, message: string, user
       // Opção inválida: repete as opções
       const income = user.monthly_income ?? 0
       const profile = (user.goal_category as SavingsProfile) ?? 'nada'
-      return savingsOptionsInteractive(income, profile)
+      return savingsOptionsMessage(income, profile)
     }
 
     // ── Step 5: Solo → valor personalizado de poupança ───────────────────────

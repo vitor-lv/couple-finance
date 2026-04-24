@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
-import { sendTextMessage, sendOptionList, sendButtonList } from '@/lib/zapi'
+import { sendTextMessage } from '@/lib/zapi'
 import { processFinanceMessage } from '@/lib/claude'
 import {
   User,
@@ -11,7 +11,6 @@ import {
   processEditValue,
   formatUserProfile,
   calculateFinancialScore,
-  messageText,
 } from '@/lib/onboarding'
 import { insertUserMessage, insertAssistantMessage, saveAndSend, saveAndReply } from './messages'
 import { TIPO } from '@/lib/constants'
@@ -129,23 +128,10 @@ export async function handleOnboarding({
   const nextMessage = await processOnboardingStep(phone, message, user)
   const inserted = await insertUserMessage(phone, senderName, message, rawMessage)
   if (!inserted) return NextResponse.json({ status: 'ignored_duplicate' })
-  await insertAssistantMessage(phone, messageText(nextMessage), 'resposta de onboarding')
+  await insertAssistantMessage(phone, nextMessage, 'resposta de onboarding')
 
   const onboardingReplyTo = user.group_id ?? replyTo
-  if (typeof nextMessage === 'string') {
-    await sendTextMessage(onboardingReplyTo, nextMessage)
-  } else {
-    try {
-      if (nextMessage.kind === 'list') {
-        await sendOptionList(onboardingReplyTo, nextMessage.message, nextMessage.optionList)
-      } else {
-        await sendButtonList(onboardingReplyTo, nextMessage.message, nextMessage.buttons)
-      }
-    } catch (e) {
-      console.error('Interactive message failed, falling back to text:', e instanceof Error ? e.message : e)
-      await sendTextMessage(onboardingReplyTo, nextMessage.fallbackText)
-    }
-  }
+  await sendTextMessage(onboardingReplyTo, nextMessage)
   return NextResponse.json({ status: 'ok' })
 }
 
