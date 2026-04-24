@@ -134,10 +134,17 @@ export async function handleOnboarding({
   const onboardingReplyTo = user.group_id ?? replyTo
   if (typeof nextMessage === 'string') {
     await sendTextMessage(onboardingReplyTo, nextMessage)
-  } else if (nextMessage.kind === 'list') {
-    await sendOptionList(onboardingReplyTo, nextMessage.message, nextMessage.optionList)
-  } else if (nextMessage.kind === 'buttons') {
-    await sendButtonList(onboardingReplyTo, nextMessage.message, nextMessage.buttons)
+  } else {
+    try {
+      if (nextMessage.kind === 'list') {
+        await sendOptionList(onboardingReplyTo, nextMessage.message, nextMessage.optionList)
+      } else {
+        await sendButtonList(onboardingReplyTo, nextMessage.message, nextMessage.buttons)
+      }
+    } catch (e) {
+      console.error('Interactive message failed, falling back to text:', e instanceof Error ? e.message : e)
+      await sendTextMessage(onboardingReplyTo, nextMessage.fallbackText)
+    }
   }
   return NextResponse.json({ status: 'ok' })
 }

@@ -3,8 +3,8 @@ import { interpretNickname, interpretGoal, interpretMoneyValue, interpretGoalCon
 import type { OptionList, ButtonItem } from './zapi'
 
 export type OnboardingInteractive =
-  | { kind: 'list'; message: string; optionList: OptionList }
-  | { kind: 'buttons'; message: string; buttons: ButtonItem[] }
+  | { kind: 'list'; message: string; optionList: OptionList; fallbackText: string }
+  | { kind: 'buttons'; message: string; buttons: ButtonItem[]; fallbackText: string }
 
 export type OnboardingMessage = string | OnboardingInteractive
 
@@ -85,6 +85,7 @@ type SavingsProfile = 'nada' | 'sobra' | 'guarda'
 function savingsOptionsInteractive(income: number, profile: SavingsProfile): OnboardingInteractive {
   const percents = profile === 'nada' ? [1, 2, 5] : profile === 'sobra' ? [5, 8, 10] : [10, 15, 20]
   const opts = percents.map(p => Math.round(income * p / 100))
+  const fmt = (v: number) => v.toLocaleString('pt-BR')
   return {
     kind: 'list',
     message: 'Pra começar leve, faz mais sentido pra você guardar:',
@@ -94,13 +95,20 @@ function savingsOptionsInteractive(income: number, profile: SavingsProfile): Onb
       sections: [{
         title: 'Escolha uma opção',
         rows: [
-          { id: '1', title: `R$ ${opts[0].toLocaleString('pt-BR')} por mês`, description: `${percents[0]}% da sua renda` },
-          { id: '2', title: `R$ ${opts[1].toLocaleString('pt-BR')} por mês`, description: `${percents[1]}% da sua renda` },
-          { id: '3', title: `R$ ${opts[2].toLocaleString('pt-BR')} por mês`, description: `${percents[2]}% da sua renda` },
+          { id: '1', title: `R$ ${fmt(opts[0])} por mês`, description: `${percents[0]}% da sua renda` },
+          { id: '2', title: `R$ ${fmt(opts[1])} por mês`, description: `${percents[1]}% da sua renda` },
+          { id: '3', title: `R$ ${fmt(opts[2])} por mês`, description: `${percents[2]}% da sua renda` },
           { id: '4', title: 'Outro valor', description: 'Eu digito o valor que quero' },
         ],
       }],
     },
+    fallbackText: (
+      `Pra começar leve, faz mais sentido pra você guardar:\n\n` +
+      `1️⃣ R$ ${fmt(opts[0])} por mês (${percents[0]}%)\n` +
+      `2️⃣ R$ ${fmt(opts[1])} por mês (${percents[1]}%)\n` +
+      `3️⃣ R$ ${fmt(opts[2])} por mês (${percents[2]}%)\n` +
+      `4️⃣ Outro valor`
+    ),
   }
 }
 
@@ -202,6 +210,7 @@ export async function processOnboardingStep(phone: string, message: string, user
               ],
             }],
           },
+          fallbackText: `Perfeito ${nickname} e ${partnerNick}! 😊\n\nQual é a maior meta financeira de vocês como casal?\n(ex: reserva de emergência, viagem, casa própria, casamento)`,
         }
       }
 
@@ -214,6 +223,7 @@ export async function processOnboardingStep(phone: string, message: string, user
           { id: '2', label: 'Começar a guardar' },
           { id: '3', label: 'Juntar pra um objetivo' },
         ],
+        fallbackText: `Boa, ${nickname}! Qual é a sua principal missão hoje?\n\n1️⃣ Controlar meus gastos no dia a dia\n2️⃣ Começar a guardar dinheiro\n3️⃣ Juntar dinheiro pra um objetivo`,
       }
     }
 
