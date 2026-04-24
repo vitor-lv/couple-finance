@@ -2,6 +2,23 @@
 if (!process.env.ZAPI_INSTANCE_ID) throw new Error('ZAPI_INSTANCE_ID não configurado')
 if (!process.env.ZAPI_TOKEN) throw new Error('ZAPI_TOKEN não configurado')
 
+export interface OptionListRow {
+  id: string
+  title: string
+  description?: string
+}
+
+export interface OptionList {
+  title: string
+  buttonLabel: string
+  sections: Array<{ title: string; rows: OptionListRow[] }>
+}
+
+export interface ButtonItem {
+  id: string
+  label: string
+}
+
 const INSTANCE_ID = process.env.ZAPI_INSTANCE_ID
 const TOKEN = process.env.ZAPI_TOKEN
 const BASE_URL = `https://api.z-api.io/instances/${INSTANCE_ID}/token/${TOKEN}`
@@ -75,6 +92,44 @@ export async function addParticipant(groupId: string, phones: string[]): Promise
   } catch (e) {
     console.error('Add participant error:', e instanceof Error ? e.message : e)
     return false
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+export async function sendOptionList(phone: string, message: string, optionList: OptionList) {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 10000)
+  try {
+    const response = await fetch(`${BASE_URL}/send-option-list`, {
+      method: 'POST',
+      headers: ZAPI_HEADERS,
+      body: JSON.stringify({ phone, message, optionList }),
+      signal: controller.signal,
+    })
+    if (!response.ok) {
+      throw new Error(`Z-API error: ${response.status} ${await response.text()}`)
+    }
+    return response.json()
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+export async function sendButtonList(phone: string, message: string, buttons: ButtonItem[]) {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 10000)
+  try {
+    const response = await fetch(`${BASE_URL}/send-button-list`, {
+      method: 'POST',
+      headers: ZAPI_HEADERS,
+      body: JSON.stringify({ phone, message, buttonList: { buttons } }),
+      signal: controller.signal,
+    })
+    if (!response.ok) {
+      throw new Error(`Z-API error: ${response.status} ${await response.text()}`)
+    }
+    return response.json()
   } finally {
     clearTimeout(timeout)
   }

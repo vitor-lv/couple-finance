@@ -1,27 +1,10 @@
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase as adminSupabase } from '@/lib/supabase'
+import { createSupabaseServerClient } from '@/lib/auth-server'
 
 export async function POST(request: NextRequest) {
   try {
-    // Verifica autenticação
-    const cookieStore = await cookies()
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() { return cookieStore.getAll() },
-          setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            )
-          },
-        },
-      }
-    )
-
+    const supabase = await createSupabaseServerClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
@@ -33,12 +16,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Todos os campos são obrigatórios' }, { status: 400 })
     }
 
-    // Garante que o email bate com o usuário autenticado
     if (email !== user.email) {
       return NextResponse.json({ error: 'Email inválido' }, { status: 403 })
     }
 
-    // Cria o casal
     const { data: couple, error: coupleError } = await adminSupabase
       .from('couples')
       .insert({})
@@ -49,7 +30,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Erro ao criar casal' }, { status: 500 })
     }
 
-    // Cria os 2 usuários
     const { error: usersError } = await adminSupabase.from('users').insert([
       {
         name,

@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
 
     const { data: couple, error: coupleError } = await adminSupabase
       .from('couples')
-      .insert({ chat_mode: 'individual' })
+      .insert({ chat_mode: 'group' })
       .select('id')
       .single()
 
@@ -65,6 +65,7 @@ export async function POST(request: NextRequest) {
         email: email ?? null,
         phone: cleanPhone,
         couple_id: couple.id,
+        chat_mode: 'individual',
         onboarding_completed: false,
         onboarding_step: -1,
       },
@@ -73,6 +74,7 @@ export async function POST(request: NextRequest) {
         email: partnerEmail || null,
         phone: cleanPartnerPhone,
         couple_id: couple.id,
+        chat_mode: 'individual',
         onboarding_completed: false,
         onboarding_step: -1,
       },
@@ -80,6 +82,8 @@ export async function POST(request: NextRequest) {
 
     if (usersError) {
       console.error('completar-cadastro casal error:', usersError.message)
+      // Compensação para evitar casal órfão quando falha a criação dos usuários.
+      await adminSupabase.from('couples').delete().eq('id', couple.id)
       return NextResponse.json({ error: 'Erro ao criar usuários' }, { status: 500 })
     }
 

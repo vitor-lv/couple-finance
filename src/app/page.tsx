@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 
 const features = [
   {
@@ -27,33 +27,6 @@ const steps = [
   { num: '4', title: 'Comece a usar', desc: 'Registre gastos e consulte finanças pelo chat' },
 ]
 
-const testimonials = [
-  {
-    stars: 5,
-    text: '"Finalmente um jeito de controlar os gastos sem ter que abrir planilhas complexas. O chat mudou nossa vida a dois."',
-    name: 'Ricardo S.',
-    role: 'Empresário',
-    initial: 'R',
-    color: 'bg-blue-100 text-blue-700',
-  },
-  {
-    stars: 5,
-    text: '"A integração é perfeita. Mando uma mensagem e já consigo ver tudo atualizado na hora. Meu marido adorou!"',
-    name: 'Ana Paula L.',
-    role: 'Designer',
-    initial: 'A',
-    color: 'bg-pink-100 text-pink-700',
-  },
-  {
-    stars: 5,
-    text: '"Simples, direto e funcional. O Finn é o melhor investimento que fizemos esse ano para nossas finanças."',
-    name: 'Bruno M.',
-    role: 'Desenvolvedor',
-    initial: 'B',
-    color: 'bg-green-100 text-green-700',
-  },
-]
-
 const faqs = [
   {
     q: 'É seguro usar o Finn?',
@@ -71,12 +44,11 @@ const faqs = [
 
 export default function Home() {
   const [openFaq, setOpenFaq] = useState<number | null>(null)
-  const [authError, setAuthError] = useState(false)
-
-  useEffect(() => {
+  const [authError, setAuthError] = useState(() => {
+    if (typeof window === 'undefined') return false
     const params = new URLSearchParams(window.location.search)
-    if (params.get('error') === 'auth') setAuthError(true)
-  }, [])
+    return params.get('error') === 'auth'
+  })
 
   const goToCadastro = () => { window.location.href = '/completar-cadastro' }
 
@@ -241,46 +213,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* PRICING - hidden temporarily */}
-      {false && <section className="bg-white px-6 py-24">
-        <div className="max-w-lg mx-auto text-center">
-          <h2 className="text-3xl lg:text-4xl font-bold text-gray-900 mb-3">
-            Investimento na sua liberdade
-          </h2>
-          <p className="text-gray-400 mb-12">Um valor justo para organizar a vida financeira do casal.</p>
-          <div className="border border-gray-200 rounded-3xl p-10 shadow-sm hover:shadow-xl transition-shadow duration-300">
-            <div className="text-xs font-bold text-green-600 uppercase tracking-widest mb-3">Plano Casal</div>
-            <div className="text-2xl font-bold text-gray-900 mb-1">Finn PRO</div>
-            <div className="flex items-end justify-center gap-1 mb-8">
-              <span className="text-gray-400 text-sm mb-2">R$</span>
-              <span className="text-5xl font-bold text-gray-900">29</span>
-              <span className="text-gray-400 text-xl mb-1">,99</span>
-              <span className="text-gray-400 text-sm mb-2">/mês</span>
-            </div>
-            <ul className="text-left flex flex-col gap-4 mb-10">
-              {[
-                '2 usuários incluídos (você + parceiro)',
-                'Registro ilimitado de gastos',
-                'Relatórios e metas do casal',
-                'Suporte Premium 24/7',
-              ].map((item, i) => (
-                <li key={i} className="flex items-center gap-3 text-sm text-gray-700">
-                  <span className="w-5 h-5 bg-green-100 rounded-full flex items-center justify-center text-green-600 text-xs font-bold flex-shrink-0">✓</span>
-                  {item}
-                </li>
-              ))}
-            </ul>
-            <button
-              onClick={goToCadastro}
-              className="w-full bg-green-500 hover:bg-green-600 text-white py-4 rounded-full font-semibold text-base transition-all duration-200 hover:-translate-y-0.5 shadow-lg shadow-green-500/20 cursor-pointer"
-            >
-              Assinar Agora
-            </button>
-            <p className="text-gray-400 text-xs mt-4">7 dias grátis • Cancele quando quiser</p>
-          </div>
-        </div>
-      </section>}
-
       {/* HOW IT WORKS */}
       <section className="bg-[#0D1117] px-6 py-24">
         <div className="max-w-5xl mx-auto">
@@ -299,37 +231,6 @@ export default function Home() {
           </div>
         </div>
       </section>
-
-      {/* TESTIMONIALS - hidden temporarily */}
-      {false && <section className="bg-white px-6 py-24">
-        <div className="max-w-5xl mx-auto">
-          <h2 className="text-3xl lg:text-4xl font-bold text-center text-gray-900 mb-14">
-            O que dizem nossos usuários
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {testimonials.map((t, i) => (
-              <div
-                key={i}
-                className="border border-gray-100 rounded-2xl p-7 flex flex-col gap-4 hover:shadow-lg transition-shadow duration-300"
-              >
-                <div className="text-yellow-400 text-base tracking-wide">
-                  {'★'.repeat(t.stars)}
-                </div>
-                <p className="text-sm text-gray-600 leading-relaxed flex-1">{t.text}</p>
-                <div className="flex items-center gap-3 mt-2">
-                  <div className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm ${t.color}`}>
-                    {t.initial}
-                  </div>
-                  <div>
-                    <div className="text-sm font-semibold text-gray-900">{t.name}</div>
-                    <div className="text-xs text-gray-400">{t.role}</div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>}
 
       {/* FAQ */}
       <section className="bg-gray-50 px-6 py-24">

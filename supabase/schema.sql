@@ -77,7 +77,7 @@ CREATE TABLE IF NOT EXISTS users (
 
   -- Perfil financeiro (coletado no onboarding)
   monthly_income       numeric,                        -- Renda mensal em reais
-  employment_type      text,                           -- Legado (não usado ativamente)
+  goal_category        text,                           -- Categoria da meta: reserva_emergencia, viagem, casa_propria, casamento, outro
   has_bonus            boolean,                        -- Recebe bônus ou 13º anual
   payment_day          integer,                        -- Dia do mês que recebe (1-31)
   goal_description     text,                           -- Ex: "reserva de emergência"
@@ -102,6 +102,43 @@ CREATE TABLE IF NOT EXISTS messages (
   raw_message jsonb             -- Payload bruto da Z-API (para debug)
 );
 
+-- ============================================================
+-- 3.1 WEBHOOK_RATE_LIMITS
+-- Janela de rate limit atômico por telefone e minuto.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS webhook_rate_limits (
+  phone        text        NOT NULL,
+  window_start timestamptz NOT NULL,
+  count        integer     NOT NULL DEFAULT 0,
+  updated_at   timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (phone, window_start)
+);
+
+CREATE OR REPLACE FUNCTION check_and_increment_webhook_rate_limit(
+  p_phone text,
+  p_limit integer DEFAULT 20
+)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  current_window timestamptz := date_trunc('minute', now());
+  current_count integer;
+BEGIN
+  INSERT INTO webhook_rate_limits (phone, window_start, count, updated_at)
+  VALUES (p_phone, current_window, 1, now())
+  ON CONFLICT (phone, window_start)
+  DO UPDATE
+    SET count = webhook_rate_limits.count + 1,
+        updated_at = now()
+  RETURNING count INTO current_count;
+
+  RETURN current_count <= p_limit;
+END;
+$$;
+
 
 -- ============================================================
 -- 4. TRANSACTIONS
@@ -124,12 +161,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   valor       numeric,          -- Valor principal (usado pelo Finn)
   categoria   text,             -- alimentação, transporte, moradia, saúde, lazer…
   descricao   text,
-  data        text,             -- Data da transação (ISO 8601, ex: "2026-03-18")
-
-  -- Campos do schema original (mantidos para compatibilidade)
-  amount      numeric,          -- Espelho de valor (schema original)
-  category    text,             -- Espelho de categoria (schema original)
-  description text              -- Espelho de descricao (schema original)
+  data        text              -- Data da transação (ISO 8601, ex: "2026-03-18")
 );
 
 
@@ -143,6 +175,7 @@ CREATE TABLE IF NOT EXISTS transactions (
 ALTER TABLE couples      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE users        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE messages     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE webhook_rate_limits ENABLE ROW LEVEL SECURITY;
 ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "service_role full access" ON couples
@@ -152,6 +185,9 @@ CREATE POLICY "service_role full access" ON users
   FOR ALL TO service_role USING (true) WITH CHECK (true);
 
 CREATE POLICY "service_role full access" ON messages
+  FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+CREATE POLICY "service_role full access" ON webhook_rate_limits
   FOR ALL TO service_role USING (true) WITH CHECK (true);
 
 CREATE POLICY "service_role full access" ON transactions
@@ -170,6 +206,14 @@ CREATE INDEX IF NOT EXISTS idx_users_group_id       ON users (group_id);
 -- Rate limiting e histórico de conversa
 CREATE INDEX IF NOT EXISTS idx_messages_phone       ON messages (phone);
 CREATE INDEX IF NOT EXISTS idx_messages_created_at  ON messages (created_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_user_keyid_unique
+  ON messages ((raw_message->>'keyId'))
+  WHERE role = 'user'
+    AND raw_message IS NOT NULL
+    AND raw_message ? 'keyId'
+    AND nullif(raw_message->>'keyId', '') IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_webhook_rate_limits_window_start
+  ON webhook_rate_limits (window_start);
 
 -- Consulta de transações por usuário/casal
 CREATE INDEX IF NOT EXISTS idx_transactions_phone      ON transactions (phone);

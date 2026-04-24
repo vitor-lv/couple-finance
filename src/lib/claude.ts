@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import OpenAI from 'openai'
 import { toFile } from 'openai/uploads'
+import { isAllowedExternalUrl } from '@/lib/url-validation'
 
 const getAnthropic = () => new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -12,16 +13,43 @@ const getGroq = () => new OpenAI({
   baseURL: 'https://api.groq.com/openai/v1',
 })
 
+const MAX_AUDIO_BYTES = 20 * 1024 * 1024 // 20MB
+
+async function fetchAudioBufferWithLimit(audioUrl: string, signal: AbortSignal): Promise<Buffer | null> {
+  const audioResponse = await fetch(audioUrl, { signal })
+  if (!audioResponse.ok || !audioResponse.body) return null
+
+  const contentLength = audioResponse.headers.get('content-length')
+  if (contentLength && Number(contentLength) > MAX_AUDIO_BYTES) return null
+
+  const reader = audioResponse.body.getReader()
+  const chunks: Uint8Array[] = []
+  let totalBytes = 0
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    if (!value) continue
+
+    totalBytes += value.byteLength
+    if (totalBytes > MAX_AUDIO_BYTES) return null
+    chunks.push(value)
+  }
+
+  return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)))
+}
+
 export async function transcribeAudio(audioUrl: string): Promise<string | null> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 30000)
 
   try {
-    const audioResponse = await fetch(audioUrl, { signal: controller.signal })
-    if (!audioResponse.ok) return null
+    if (!isAllowedExternalUrl(audioUrl)) return null
 
-    const buffer = await audioResponse.arrayBuffer()
-    const file = await toFile(Buffer.from(buffer), 'audio.ogg', { type: 'audio/ogg' })
+    const audioBuffer = await fetchAudioBufferWithLimit(audioUrl, controller.signal)
+    if (!audioBuffer) return null
+
+    const file = await toFile(audioBuffer, 'audio.ogg', { type: 'audio/ogg' })
 
     const transcription = await getGroq().audio.transcriptions.create({
       file,
@@ -43,8 +71,9 @@ export async function interpretNickname(message: string): Promise<string | null>
   const trimmed = message.trim()
   if (!trimmed) return null
 
-  // Mensagem curta (≤ 30 chars) = provavelmente já é o apelido direto (ex: "LV", "Vitor", "Ju")
-  if (trimmed.length <= 30 && !/^(oi|olá|ola|sim|não|nao|ok|tudo|pode)$/i.test(trimmed)) {
+  // Palavra única curta sem espaços = provavelmente já é o apelido (ex: "LV", "Vitor", "Ju")
+  const GREETINGS = /^(oi|olá|ola|eai|e aí|eaí|e ai|sim|não|nao|ok|tudo|pode|hey|boa|bom)$/i
+  if (!trimmed.includes(' ') && trimmed.length <= 20 && !GREETINGS.test(trimmed)) {
     return trimmed
   }
 
@@ -222,6 +251,7 @@ export async function processFinanceMessage(
     financialScore?: number
     monthlyIncome?: number
     monthlySavingsGoal?: number
+    fixedExpenses?: number
     totalGastoMes?: number
   }
 ) {
@@ -238,10 +268,13 @@ export async function processFinanceMessage(
 CONTEXTO:
 - Quem está falando: ${context?.senderName || 'usuário'}
 - Renda mensal: R$ ${context?.monthlyIncome || 0}
+- Gastos fixos mensais: R$ ${context?.fixedExpenses || 0}
 - Meta de poupança: R$ ${context?.monthlySavingsGoal || 0}/mês
 - Gasto total esse mês: R$ ${context?.totalGastoMes || 0}
-- Margem restante: R$ ${((context?.monthlyIncome || 0) - (context?.totalGastoMes || 0) - (context?.monthlySavingsGoal || 0)).toFixed(0)}
-- Score financeiro atual: ${context?.financialScore ?? 50}/100`,
+- Margem restante: R$ ${((context?.monthlyIncome || 0) - (context?.fixedExpenses || 0) - (context?.totalGastoMes || 0) - (context?.monthlySavingsGoal || 0)).toFixed(0)}
+- Score financeiro atual: ${context?.financialScore ?? 50}/100
+- Meta financeira: ${context?.coupleGoal || 'não definida'}
+- Valor da meta: R$ ${context?.coupleGoalAmount || 0}`,
         messages: [
           ...history,
           { role: 'user', content: message },

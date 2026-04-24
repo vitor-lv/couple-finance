@@ -1,419 +1,107 @@
-# CLAUDE.md
+# Finn — Assistente financeiro para casais via WhatsApp
 
-This is a remotion based video app that uses React to render videos. 
+Next.js 15 (App Router) + Supabase (PostgreSQL) + Claude Haiku + Z-API + Vercel.  
+Usuários mandam mensagens em linguagem natural no WhatsApp; o Finn interpreta, salva e responde.  
+Não há dashboard — a UX é 100% conversacional.
 
-Full remotion docs can be found here: https://www.remotion.dev/docs/. Consult these docs often if you're uncertain.
+---
 
+## Arquivos e responsabilidades
 
-# Project structure
+### Webhook (coração do sistema)
+| Arquivo | O que faz |
+|---|---|
+| `src/app/api/webhook/route.ts` | Recebe POST da Z-API. Valida token/HMAC/rate limit, roteia para o handler certo. ~130 linhas. |
+| `src/lib/webhook/handlers.ts` | 4 handlers: `handleNewUser`, `handleEditing`, `handleOnboarding`, `handleFinance`. |
+| `src/lib/webhook/messages.ts` | Utilitários de persistência: `insertUserMessage`, `insertAssistantMessage`, `saveAndSend`, `saveAndReply`. |
 
-The Root file is usually named "src/Root.tsx" and looks like this:
+### Lógica de negócio
+| Arquivo | O que faz |
+|---|---|
+| `src/lib/onboarding.ts` | Steps 0–4 do onboarding + edição de perfil + `formatUserProfile` + `calculateFinancialScore`. Exporta `User` type. |
+| `src/lib/claude.ts` | Todas as chamadas à API Claude/Groq: `processFinanceMessage`, `processFinanceImage`, `transcribeAudio`, `interpretNickname`, `interpretGoal`, `interpretMoneyValue`, `interpretEditValue`. |
+| `src/lib/constants.ts` | `TIPO` — enum de tipos de resposta (`gasto`, `receita`, `ver_perfil`, etc). |
+| `src/lib/url-validation.ts` | `isAllowedExternalUrl` — bloqueia URLs privadas/internas. |
 
-```tsx
-import {Composition} from 'remotion';
-import {MyComp} from './MyComp';
+### Infra / Auth
+| Arquivo | O que faz |
+|---|---|
+| `src/lib/supabase.ts` | Client admin (service_role) — usado no server. |
+| `src/lib/auth-server.ts` | `createSupabaseServerClient()` — client com cookies para rotas autenticadas. |
+| `src/lib/zapi.ts` | `sendTextMessage`, `sendTyping` — integração Z-API. |
 
-export const Root: React.FC = () => {
-	return (
-		<>
-			<Composition
-				id="MyComp"
-				component={MyComp}
-				durationInFrames={120}
-				width={1920}
-				height={1080}
-				fps={30}
-				defaultProps={{}}
-			/>
-		</>
-	);
-};
+### API routes (cadastro web)
+| Rota | O que faz |
+|---|---|
+| `src/app/api/auth/callback/route.ts` | Callback OAuth Google → cria user se não existe, redireciona. |
+| `src/app/api/auth/check-user/route.ts` | Verifica se usuário autenticado já tem telefone cadastrado. |
+| `src/app/api/auth/email-signup/route.ts` | Pós-signup email: cria registro temporário no banco. |
+| `src/app/api/completar-cadastro/route.ts` | Cria usuário (individual) ou casal + 2 usuários (modo casal). |
+| `src/app/api/register/route.ts` | Rota legada de registro com auth — cria casal para usuário autenticado. |
+| `src/app/api/save-user/route.ts` | Salva usuário OAuth se ainda não existe no banco. |
+
+### Frontend
+| Arquivo | O que faz |
+|---|---|
+| `src/app/page.tsx` | Landing page — hero, features, como funciona, FAQ, CTA. |
+| `src/app/completar-cadastro/page.tsx` | Formulário pós-login: coleta telefone e dados do parceiro. |
+| `src/app/sucesso/page.tsx` | Confirmação pós-cadastro com instruções de uso. |
+
+### Schema
+| Arquivo | O que faz |
+|---|---|
+| `supabase/schema.sql` | Schema canônico completo. Rodar do zero recria tudo. |
+| `supabase/migrations/` | Migrations incrementais. Rodar em ordem no SQL Editor do Supabase. |
+
+---
+
+## Fluxo do webhook (ordem de prioridade)
+
+```
+POST /api/webhook
+  1. Validação: token Z-API → HMAC → parse JSON → fromMe? → rate limit
+  2. Mídia: imagem → processFinanceImage | áudio → transcribeAudio → texto
+  3. Busca user por phone. Se não existe → handleNewUser
+  4. user.editing_field?        → handleEditing
+  5. onboarding_completed=false? → handleOnboarding
+  6. else                        → handleFinance
 ```
 
-A `<Composition>` defines a video that can be rendered. It consists of a React "component", an "id", a "durationInFrames", a "width", a "height" and a frame rate "fps".
-The default frame rate should be 30.
-The default height should be 1080 and the default width should be 1920.
-The default "id" should be "MyComp".
-The "defaultProps" must be in the shape of the React props the "component" expects.
+---
 
-Inside a React "component", one can use the "useCurrentFrame()" hook to get the current frame number.
-Frame numbers start at 0.
+## Banco de dados (tabelas principais)
 
-```tsx
-export const MyComp: React.FC = () => {
-	const frame = useCurrentFrame();
-	return <div>Frame {frame}</div>;
-};
-```
+**users** — uma linha por pessoa  
+`phone` · `nickname` · `couple_id` · `chat_mode` · `onboarding_step` · `onboarding_completed` · `editing_field` · `monthly_income` · `monthly_savings_goal` · `fixed_expenses` · `goal_category` · `goal_description` · `goal_amount` · `financial_score`
 
-# Component Rules
+**transactions**  
+`phone` · `tipo` (gasto/receita) · `valor` · `categoria` · `descricao` · `data` · `couple_id`
 
-Inside a component, regular HTML and SVG tags can be returned.
-There are special tags for video and audio.
-Those special tags accept regular CSS styles.
+**messages** — histórico de conversa + idempotência  
+`phone` · `role` (user/assistant) · `content` · `raw_message` (JSONB com `keyId` para deduplicação)
 
-If a video is included in the component it should use the "<OffthreadVideo>" tag.
+**couples** — vínculo de casal  
+`id` · `group_id` (JID do grupo WhatsApp) · `chat_mode`
 
-```tsx
-import {OffthreadVideo} from 'remotion';
+---
 
-export const MyComp: React.FC = () => {
-	return (
-		<div>
-			<OffthreadVideo
-				src="https://remotion.dev/bbb.mp4"
-				style={{width: '100%'}}
-			/>
-		</div>
-	);
-};
-```
+## Onboarding steps
 
-OffthreadVideo has a "startFrom" prop that trims the left side of a video by a number of frames.
-OffthreadVideo has a "endAt" prop that limits how long a video is shown.
-OffthreadVideo has a "volume" prop that sets the volume of the video. It accepts values between 0 and 1.
+| Step | O que acontece |
+|---|---|
+| -1 | Primeira mensagem → envia boas-vindas, avança para 0 |
+| 0 | Pede apelido → `interpretNickname` |
+| 1 | Pede meta financeira → `interpretGoal` (salva em `goal_category` + `goal_description`) |
+| 2 | Pede valor — renda (se `reserva_emergencia`) ou valor da meta |
+| 3 | Confirma valor sugerido (só `reserva_emergencia`) |
+| 4 | Pede poupança mensal → `onboarding_completed = true` |
 
-If an non-animated image is included In the component it should use the "<Img>" tag.
+---
 
-```tsx
-import {Img} from 'remotion';
+## Convenções
 
-export const MyComp: React.FC = () => {
-	return <Img src="https://remotion.dev/logo.png" style={{width: '100%'}} />;
-};
-```
-
-If an animated GIF is included, the "@remotion/gif" package should be installed and the "<Gif>" tag should be used.
-
-```tsx
-import {Gif} from '@remotion/gif';
-
-export const MyComp: React.FC = () => {
-	return (
-		<Gif
-			src="https://media.giphy.com/media/l0MYd5y8e1t0m/giphy.gif"
-			style={{width: '100%'}}
-		/>
-	);
-};
-```
-
-If audio is included, the "<Audio>" tag should be used.
-
-```tsx
-import {Audio} from 'remotion';
-
-export const MyComp: React.FC = () => {
-	return <Audio src="https://remotion.dev/audio.mp3" />;
-};
-```
-
-Asset sources can be specified as either a Remote URL or an asset that is referenced from the "public/" folder of the project.
-If an asset is referenced from the "public/" folder, it should be specified using the "staticFile" API from Remotion
-
-```tsx
-import {Audio, staticFile} from 'remotion';
-
-export const MyComp: React.FC = () => {
-	return <Audio src={staticFile('audio.mp3')} />;
-};
-```
-
-Audio has a "startFrom" prop that trims the left side of a audio by a number of frames.
-Audio has a "endAt" prop that limits how long a audio is shown.
-Audio has a "volume" prop that sets the volume of the audio. It accepts values between 0 and 1.
-
-If two elements should be rendered on top of each other, they should be layered using the "AbsoluteFill" component from "remotion".
-
-```tsx
-import {AbsoluteFill} from 'remotion';
-
-export const MyComp: React.FC = () => {
-	return (
-		<AbsoluteFill>
-			<AbsoluteFill style={{background: 'blue'}}>
-				<div>This is in the back</div>
-			</AbsoluteFill>
-			<AbsoluteFill style={{background: 'blue'}}>
-				<div>This is in front</div>
-			</AbsoluteFill>
-		</AbsoluteFill>
-	);
-};
-```
-
-Any Element can be wrapped in a "Sequence" component from "remotion" to place the element later in the video.
-
-```tsx
-import {Sequence} from 'remotion';
-
-export const MyComp: React.FC = () => {
-	return (
-		<Sequence from={10} durationInFrames={20}>
-			<div>This only appears after 10 frames</div>
-		</Sequence>
-	);
-};
-```
-
-A Sequence has a "from" prop that specifies the frame number where the element should appear.
-The "from" prop can be negative, in which case the Sequence will start immediately but cut off the first "from" frames.
-
-A Sequence has a "durationInFrames" prop that specifies how long the element should appear.
-
-If a child component of Sequence calls "useCurrentFrame()", the enumeration starts from the first frame the Sequence appears and starts at 0.
-
-```tsx
-import {Sequence} from 'remotion';
-
-export const Child: React.FC = () => {
-	const frame = useCurrentFrame();
-
-	return <div>At frame 10, this should be 0: {frame}</div>;
-};
-
-export const MyComp: React.FC = () => {
-	return (
-		<Sequence from={10} durationInFrames={20}>
-			<Child />
-		</Sequence>
-	);
-};
-```
-
-For displaying multiple elements after another, the "Series" component from "remotion" can be used.
-
-```tsx
-import {Series} from 'remotion';
-
-export const MyComp: React.FC = () => {
-	return (
-		<Series>
-			<Series.Sequence durationInFrames={20}>
-				<div>This only appears immediately</div>
-			</Series.Sequence>
-			<Series.Sequence durationInFrames={30}>
-				<div>This only appears after 20 frames</div>
-			</Series.Sequence>
-			<Series.Sequence durationInFrames={30} offset={-8}>
-				<div>This only appears after 42 frames</div>
-			</Series.Sequence>
-		</Series>
-	);
-};
-```
-
-The "Series.Sequence" component works like "Sequence", but has no "from" prop.
-Instead, it has a "offset" prop shifts the start by a number of frames.
-
-For displaying multiple elements after another another and having a transition inbetween, the "TransitionSeries" component from "@remotion/transitions" can be used.
-
-```tsx
-import {
-	linearTiming,
-	springTiming,
-	TransitionSeries,
-} from '@remotion/transitions';
-
-import {fade} from '@remotion/transitions/fade';
-import {wipe} from '@remotion/transitions/wipe';
-
-export const MyComp: React.FC = () => {
-	return (
-		<TransitionSeries>
-			<TransitionSeries.Sequence durationInFrames={60}>
-				<Fill color="blue" />
-			</TransitionSeries.Sequence>
-			<TransitionSeries.Transition
-				timing={springTiming({config: {damping: 200}})}
-				presentation={fade()}
-			/>
-			<TransitionSeries.Sequence durationInFrames={60}>
-				<Fill color="black" />
-			</TransitionSeries.Sequence>
-			<TransitionSeries.Transition
-				timing={linearTiming({durationInFrames: 30})}
-				presentation={wipe()}
-			/>
-			<TransitionSeries.Sequence durationInFrames={60}>
-				<Fill color="white" />
-			</TransitionSeries.Sequence>
-		</TransitionSeries>
-	);
-};
-```
-
-"TransitionSeries.Sequence" works like "Series.Sequence" but has no "offset" prop.
-The order of tags is important, "TransitionSeries.Transition" must be inbetween "TransitionSeries.Sequence" tags.
-
-Remotion needs all of the React code to be deterministic. Therefore, it is forbidden to use the Math.random() API.
-If randomness is requested, the "random()" function from "remotion" should be used and a static seed should be passed to it.
-The random function returns a number between 0 and 1.
-
-```tsx twoslash
-import {random} from 'remotion';
-
-export const MyComp: React.FC = () => {
-	return <div>Random number: {random('my-seed')}</div>;
-};
-```
-
-Remotion includes an interpolate() helper that can animate values over time.
-
-```tsx
-import {interpolate} from 'remotion';
-
-export const MyComp: React.FC = () => {
-	const frame = useCurrentFrame();
-	const value = interpolate(frame, [0, 100], [0, 1], {
-		extrapolateLeft: 'clamp',
-		extrapolateRight: 'clamp',
-	});
-	return (
-		<div>
-			Frame {frame}: {value}
-		</div>
-	);
-};
-```
-
-The "interpolate()" function accepts a number and two arrays of numbers.
-The first argument is the value to animate.
-The first array is the input range, the second array is the output range.
-The fourth argument is optional but code should add "extrapolateLeft: 'clamp'" and "extrapolateRight: 'clamp'" by default.
-The function returns a number between the first and second array.
-
-If the "fps", "durationInFrames", "height" or "width" of the composition are required, the "useVideoConfig()" hook from "remotion" should be used.
-
-```tsx
-import {useVideoConfig} from 'remotion';
-
-export const MyComp: React.FC = () => {
-	const {fps, durationInFrames, height, width} = useVideoConfig();
-	return (
-		<div>
-			fps: {fps}
-			durationInFrames: {durationInFrames}
-			height: {height}
-			width: {width}
-		</div>
-	);
-};
-```
-
-Remotion includes a "spring()" helper that can animate values over time.
-Below is the suggested default usage.
-
-```tsx
-import {spring} from 'remotion';
-
-export const MyComp: React.FC = () => {
-	const frame = useCurrentFrame();
-	const {fps} = useVideoConfig();
-
-	const value = spring({
-		fps,
-		frame,
-		config: {
-			damping: 200,
-		},
-	});
-	return (
-		<div>
-			Frame {frame}: {value}
-		</div>
-	);
-};
-```
-
-## Making UI components
-
-When making UI components remember that UI components in Remotion are fundamentally different from normal interactive React components:
-
-### Remotion Components vs Interactive React Components
-
-**Remotion Components:**
-- Are rendered frame-by-frame to create videos
-- Cannot have user interactions (no onClick, onHover, etc.)
-- Cannot use hooks like useState for interactivity
-- Must be deterministic - same input always produces same output
-- Animations are driven by the current frame number
-- No event handlers or user input handling
-- Focus on visual presentation and animation
-
-**Normal React Components:**
-- Handle user interactions and events
-- Use state management (useState, useReducer, etc.)
-- Can fetch data asynchronously
-- Respond to user input in real-time
-- Have lifecycle methods and effects that run over time
-
-### Key Differences in Implementation
-
-1. **State Management**
-   - Remotion: Use `useCurrentFrame()` to drive animations
-   - Normal React: Use `useState()` for interactive state
-
-2. **Animations**
-   - Remotion: Use `interpolate()` or `spring()` based on frame number
-   - Normal React: Use CSS transitions, animation libraries, or requestAnimationFrame
-
-3. **User Input**
-   - Remotion: No user input - all props must be passed at composition time
-   - Normal React: Handle clicks, form inputs, gestures, etc.
-
-4. **Effects**
-   - Remotion: Avoid useEffect - calculations should be pure based on frame
-   - Normal React: Use useEffect for side effects and subscriptions
-
-### Example Comparison
-
-**Button in Normal React:**
-```tsx
-const Button = () => {
-  const [clicked, setClicked] = useState(false);
-  
-  return (
-    <button 
-      onClick={() => setClicked(true)}
-      style={{ background: clicked ? 'blue' : 'gray' }}
-    >
-      Click me!
-    </button>
-  );
-};
-```
-
-**Animated Button in Remotion:**
-```tsx
-import { useCurrentFrame, interpolate } from 'remotion';
-
-const AnimatedButton = () => {
-  const frame = useCurrentFrame();
-  
-  // Animate scale over 30 frames
-  const scale = interpolate(frame, [0, 30], [1, 1.2], {
-    extrapolateRight: 'clamp'
-  });
-  
-  return (
-    <div style={{
-      transform: `scale(${scale})`,
-      background: 'blue',
-      padding: '10px 20px',
-      display: 'inline-block'
-    }}>
-      Click me!
-    </div>
-  );
-};
-```
-
-### Best Practices for Remotion Components
-
-1. **Always use frame-based animations** - Never rely on time-based effects
-2. **Keep components pure** - No side effects or external data fetching
-3. **Use Remotion's hooks** - useCurrentFrame(), useVideoConfig(), etc.
-4. **Leverage Sequences** - For timing different elements
-5. **No interactive elements** - Remove all event handlers from UI components
-6. **Deterministic rendering** - Ensure consistent output for video rendering
+- Todo acesso ao banco é via `service_role` (nunca anon key no server)
+- Rotas autenticadas usam `createSupabaseServerClient()` de `src/lib/auth-server.ts`
+- Tipos de resposta do Claude ficam em `TIPO` (`src/lib/constants.ts`)
+- RLS habilitado em todas as tabelas — só `service_role` tem acesso
+- Grupos WhatsApp: `replyTo = body.phone` (JID do grupo), `userPhone = participantPhone`

@@ -1,30 +1,13 @@
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { supabase as adminSupabase } from '@/lib/supabase'
+import { createSupabaseServerClient } from '@/lib/auth-server'
 
-export async function POST(request: NextRequest) {
+export async function POST() {
   try {
-    const cookieStore = await cookies()
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() { return cookieStore.getAll() },
-          setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            )
-          },
-        },
-      }
-    )
-
+    const supabase = await createSupabaseServerClient()
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user?.email) return NextResponse.json({ ok: true }) // ignora se não tem sessão ainda
+    if (!user?.email) return NextResponse.json({ ok: true }) // no session yet, ignore silently
 
-    // Cria registro temporário só se ainda não existir
     const { data: existing } = await adminSupabase
       .from('users')
       .select('id')
@@ -33,17 +16,23 @@ export async function POST(request: NextRequest) {
 
     if (!existing?.length) {
       const name = user.user_metadata?.full_name ?? user.user_metadata?.name ?? user.email.split('@')[0]
-      await adminSupabase.from('users').insert({
+      const { error: insertError } = await adminSupabase.from('users').insert({
         email: user.email,
         name,
         phone: null,
         onboarding_completed: false,
         onboarding_step: 0,
       })
+
+      if (insertError) {
+        console.error('email-signup insert error:', insertError.message)
+        return NextResponse.json({ ok: false, error: 'Erro ao criar usuário' }, { status: 500 })
+      }
     }
 
     return NextResponse.json({ ok: true })
-  } catch {
-    return NextResponse.json({ ok: true })
+  } catch (error) {
+    console.error('email-signup error:', error instanceof Error ? error.message : 'unknown')
+    return NextResponse.json({ ok: false, error: 'Erro interno' }, { status: 500 })
   }
 }

@@ -1,37 +1,19 @@
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase as adminSupabase } from '@/lib/supabase'
+import { createSupabaseServerClient } from '@/lib/auth-server'
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get('code')
 
   if (code) {
-    const cookieStore = await cookies()
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll()
-          },
-          setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            )
-          },
-        },
-      }
-    )
-
+    const supabase = await createSupabaseServerClient()
     const { error } = await supabase.auth.exchangeCodeForSession(code)
+
     if (!error) {
       const { data: { user } } = await supabase.auth.getUser()
 
       if (user?.email) {
-        // Busca qualquer usuário com esse email (pega o primeiro se houver duplicatas)
         const { data: existingRows } = await adminSupabase
           .from('users')
           .select('id, phone')
@@ -41,7 +23,6 @@ export async function GET(request: NextRequest) {
         const existing = existingRows?.[0] ?? null
 
         if (!existing) {
-          // Fallback para name: Google metadata → parte do email
           const name =
             user.user_metadata?.full_name ??
             user.user_metadata?.name ??
@@ -63,7 +44,6 @@ export async function GET(request: NextRequest) {
           return NextResponse.redirect(`${origin}/completar-cadastro`)
         }
 
-        // Usuário sem phone ainda não completou o cadastro
         if (!existing.phone) {
           return NextResponse.redirect(`${origin}/completar-cadastro`)
         }
