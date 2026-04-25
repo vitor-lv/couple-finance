@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase'
 import { sendTextMessage } from '@/lib/zapi'
 import { TIPO } from '@/lib/constants'
 import type { FinanceResult } from '@/lib/claude'
+import { stripJsonLikeEnvelopeForWhatsApp } from '@/lib/whatsapp-sanitize'
 
 const DUPLICATE_KEY_ERROR_CODE = '23505'
 
@@ -26,11 +27,12 @@ export async function insertUserMessage(
 }
 
 export async function insertAssistantMessage(phone: string, content: string, context: string): Promise<void> {
+  const safeContent = stripJsonLikeEnvelopeForWhatsApp(content)
   const { error } = await supabase.from('messages').insert({
     phone,
     sender_name: 'assistant',
     role: 'assistant',
-    content,
+    content: safeContent,
   })
   if (error) {
     throw new Error(`Erro ao salvar ${context}: ${error.message}`)
@@ -66,11 +68,12 @@ export async function saveAndReply(
   const inserted = await insertUserMessage(userPhone, senderName, userContent, rawMessage)
   if (!inserted) return false
 
+  const safeResposta = stripJsonLikeEnvelopeForWhatsApp(result.resposta)
   const { error: assistantError } = await supabase.from('messages').insert({
     phone: userPhone,
     sender_name: 'assistant',
     role: 'assistant',
-    content: result.resposta,
+    content: safeResposta,
   })
   if (assistantError) {
     throw new Error(`Erro ao salvar resposta do assistant: ${assistantError.message}`)
@@ -112,6 +115,6 @@ export async function saveAndReply(
     }
   }
 
-  await sendTextMessage(replyTo, result.resposta)
+  await sendTextMessage(replyTo, safeResposta)
   return true
 }

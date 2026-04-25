@@ -1,3 +1,5 @@
+import { stripJsonLikeEnvelopeForWhatsApp } from '@/lib/whatsapp-sanitize'
+
 // Validação de variáveis de ambiente no startup (baixo)
 if (!process.env.ZAPI_INSTANCE_ID) throw new Error('ZAPI_INSTANCE_ID não configurado')
 if (!process.env.ZAPI_TOKEN) throw new Error('ZAPI_TOKEN não configurado')
@@ -104,7 +106,7 @@ export async function sendOptionList(phone: string, message: string, optionList:
     const response = await fetch(`${BASE_URL}/send-option-list`, {
       method: 'POST',
       headers: ZAPI_HEADERS,
-      body: JSON.stringify({ phone, message, optionList }),
+      body: JSON.stringify({ phone, message: stripJsonLikeEnvelopeForWhatsApp(message), optionList }),
       signal: controller.signal,
     })
     const text = await response.text()
@@ -127,7 +129,7 @@ export async function sendButtonList(phone: string, message: string, buttons: Bu
     const response = await fetch(`${BASE_URL}/send-button-list`, {
       method: 'POST',
       headers: ZAPI_HEADERS,
-      body: JSON.stringify({ phone, message, buttonList: { buttons } }),
+      body: JSON.stringify({ phone, message: stripJsonLikeEnvelopeForWhatsApp(message), buttonList: { buttons } }),
       signal: controller.signal,
     })
     const text = await response.text()
@@ -149,10 +151,11 @@ export async function sendTextMessage(phone: string, message: string) {
   const timeout = setTimeout(() => controller.abort(), 10000)
 
   try {
+    const safeMessage = stripJsonLikeEnvelopeForWhatsApp(message)
     const response = await fetch(`${BASE_URL}/send-text`, {
       method: 'POST',
       headers: ZAPI_HEADERS,
-      body: JSON.stringify({ phone, message }),
+      body: JSON.stringify({ phone, message: safeMessage }),
       signal: controller.signal,
     })
 
