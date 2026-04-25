@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { sendTextMessage } from '@/lib/zapi'
-import { processFinanceMessage, type FinanceResult } from '@/lib/claude'
+import { processFinanceMessage } from '@/lib/claude'
 import {
   User,
   getWelcomeMessage,
@@ -220,6 +220,54 @@ export async function handleFinance({
     const welcomeMsg = getWelcomeMessage(user.name ?? senderName, !!user.couple_id)
     const fullMsg = `Perfil zerado! 🔄\n\n${welcomeMsg}`
     return saveAndSend(phone, senderName, message, rawMessage, replyTo, fullMsg, 'resposta de reset')
+  }
+
+  if (result.tipo === TIPO.EDITAR_GASTO) {
+    const busca = result.busca
+    if (busca?.descricao || busca?.valor_antigo) {
+      let query = supabase
+        .from('transactions')
+        .select('id')
+        .eq('phone', phone)
+        .order('created_at', { ascending: false })
+        .limit(1)
+
+      if (busca.descricao) query = query.ilike('descricao', `%${busca.descricao}%`)
+      if (busca.valor_antigo) query = query.eq('valor', busca.valor_antigo)
+
+      const { data: found } = await query
+      if (found?.length) {
+        const updates: Record<string, unknown> = {}
+        if (result.atualizacao?.valor) updates.valor = result.atualizacao.valor
+        if (result.atualizacao?.categoria) updates.categoria = result.atualizacao.categoria
+        if (result.atualizacao?.descricao) updates.descricao = result.atualizacao.descricao
+        if (Object.keys(updates).length) {
+          await supabase.from('transactions').update(updates).eq('id', found[0].id)
+        }
+      }
+    }
+    return saveAndSend(phone, senderName, message, rawMessage, replyTo, result.resposta, 'edição de gasto')
+  }
+
+  if (result.tipo === TIPO.DELETAR_GASTO) {
+    const busca = result.busca
+    if (busca?.descricao || busca?.valor_antigo) {
+      let query = supabase
+        .from('transactions')
+        .select('id')
+        .eq('phone', phone)
+        .order('created_at', { ascending: false })
+        .limit(1)
+
+      if (busca.descricao) query = query.ilike('descricao', `%${busca.descricao}%`)
+      if (busca.valor_antigo) query = query.eq('valor', busca.valor_antigo)
+
+      const { data: found } = await query
+      if (found?.length) {
+        await supabase.from('transactions').delete().eq('id', found[0].id)
+      }
+    }
+    return saveAndSend(phone, senderName, message, rawMessage, replyTo, result.resposta, 'exclusão de gasto')
   }
 
   if (result.tipo === TIPO.SALVAR_RENDA && result.valor) {

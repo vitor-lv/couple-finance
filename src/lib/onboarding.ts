@@ -69,6 +69,26 @@ function extractNumberChoice(message: string, max: number): number | null {
   return null
 }
 
+function extractMissionChoice(message: string): number | null {
+  const lower = message.toLowerCase()
+  const choice = extractNumberChoice(message, 3)
+  if (choice) return choice
+  if (/controlar|gastos|dia.a.dia|registro/.test(lower)) return 1
+  if (/guardar|poupar|economizar|poupan/.test(lower)) return 2
+  if (/juntar|objetivo|meta|sonho/.test(lower)) return 3
+  return null
+}
+
+function extractSavingsProfileChoice(message: string): number | null {
+  const lower = message.toLowerCase()
+  const choice = extractNumberChoice(message, 3)
+  if (choice) return choice
+  if (/^(nada|zero|nenhum|não sobra|nao sobra|nunca sobra)/.test(lower)) return 1
+  if (/sobra|às vezes|as vezes|eventualm/.test(lower)) return 2
+  if (/já guardo|ja guardo|guardo|poupo|estou guardando/.test(lower)) return 3
+  return null
+}
+
 type SavingsProfile = 'nada' | 'sobra' | 'guarda'
 
 function savingsOptionsMessage(income: number, profile: SavingsProfile): string {
@@ -228,7 +248,7 @@ export async function processOnboardingStep(phone: string, message: string, user
       }
 
       // Solo: interpreta escolha de missão (1/2/3)
-      const choice = extractNumberChoice(message, 3)
+      const choice = extractMissionChoice(message)
 
       if (choice === 2) {
         await supabase.from('users').update({ onboarding_step: 2 }).eq('phone', phone)
@@ -281,7 +301,7 @@ export async function processOnboardingStep(phone: string, message: string, user
       }
 
       // Solo: interpreta perfil de poupança (1/2/3)
-      const choice = extractNumberChoice(message, 3)
+      const choice = extractSavingsProfileChoice(message)
       if (!choice) {
         return (
           `Não entendi 😅 Escolha uma opção:\n\n` +
@@ -351,7 +371,9 @@ export async function processOnboardingStep(phone: string, message: string, user
         return conclusionMessageCouple(nick, goalDesc, goalAmount, true)
       }
 
-      // Solo: interpreta escolha de poupança (1/2/3/4)
+      // Solo: interpreta escolha de poupança (1/2/3/4 ou valor direto)
+      const income = user.monthly_income ?? 0
+      const profile = (user.goal_category as SavingsProfile) ?? 'nada'
       const choice = extractNumberChoice(message, 4)
 
       if (choice === 4) {
@@ -360,8 +382,6 @@ export async function processOnboardingStep(phone: string, message: string, user
       }
 
       if (choice && choice >= 1 && choice <= 3) {
-        const income = user.monthly_income ?? 0
-        const profile = (user.goal_category as SavingsProfile) ?? 'nada'
         const percents = profile === 'nada' ? [1, 2, 5] : profile === 'sobra' ? [5, 8, 10] : [10, 15, 20]
         const value = Math.round(income * percents[choice - 1] / 100)
 
@@ -375,9 +395,18 @@ export async function processOnboardingStep(phone: string, message: string, user
         return conclusionMessageSolo(nick, value, profile)
       }
 
-      // Opção inválida: repete as opções
-      const income = user.monthly_income ?? 0
-      const profile = (user.goal_category as SavingsProfile) ?? 'nada'
+      // Nenhuma opção numérica: tenta interpretar como valor monetário direto
+      const directValue = await interpretMoneyValue(message)
+      if (directValue && directValue > 0) {
+        await supabase.from('users').update({
+          monthly_savings_goal: directValue,
+          onboarding_step: 5,
+          onboarding_completed: true,
+        }).eq('phone', phone)
+        const nick = user.nickname ?? user.name ?? 'você'
+        return conclusionMessageSolo(nick, directValue, profile)
+      }
+
       return savingsOptionsMessage(income, profile)
     }
 

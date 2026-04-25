@@ -7,6 +7,8 @@ export const TIPO = {
   RESETAR_PERFIL:   'resetar_perfil',
   SALVAR_RENDA:     'salvar_renda',
   MULTIPLOS_GASTOS: 'multiplos_gastos',
+  EDITAR_GASTO:     'editar_gasto',
+  DELETAR_GASTO:    'deletar_gasto',
   OUTRO:            'outro',
 } as const
 

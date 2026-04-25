@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import OpenAI from 'openai'
 import { toFile } from 'openai/uploads'
 import { isAllowedExternalUrl } from '@/lib/url-validation'
+import { stripJsonLikeEnvelopeForWhatsApp } from '@/lib/whatsapp-sanitize'
 
 const getAnthropic = () => new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -186,7 +187,8 @@ const FINANCE_SYSTEM_PROMPT = `Você é o Finn, assistente financeiro pessoal no
 AÇÕES DE PERFIL — detecte a intenção do usuário e use o tipo correto:
 • Se quiser VER o perfil (ex: "me mostra meu perfil", "quais meus dados") → tipo: "ver_perfil"
 • Se quiser EDITAR um campo (ex: "quero mudar minha renda", "editar perfil") → tipo: "editar_perfil"
-• Se quiser RESETAR/REFAZER do zero (ex: "quero recomeçar", "zera meu perfil", "refazer cadastro") → tipo: "resetar_perfil"
+• Se quiser RESETAR/REFAZER do zero (ex: "quero recomeçar do zero", "zera meu perfil", "refazer meu cadastro", "deletar meu perfil") → tipo: "resetar_perfil"
+  ATENÇÃO: "resetar_perfil" é destrutivo — use APENAS com intenção explícita e inequívoca de apagar tudo. Nunca inferir de respostas curtas como "todos", "tudo", "sim" em outro contexto de conversa.
 
 COLETA ORGÂNICA DE RENDA:
 • Quando precisar da renda para dar um insight (ex: calcular % de gastos, sugerir limite), pergunte naturalmente:
@@ -199,9 +201,22 @@ CAPACIDADES ESPECIAIS:
 - Nunca diga que não consegue ler imagens — você sempre consegue
 - Se a imagem tiver múltiplas transações (ex: extrato, fatura), registre todas de uma vez
 
+EDIÇÃO E EXCLUSÃO DE GASTOS:
+- Quando o usuário quiser corrigir um gasto (ex: "corrige o mercado de 150 para 120", "mudei a categoria do uber para transporte") → tipo: "editar_gasto"
+  Inclua "busca" com os dados para encontrar a transação (descricao e/ou valor_antigo) e "atualizacao" com os campos a mudar (valor, categoria, descricao)
+- Quando o usuário quiser remover/deletar um gasto (ex: "remove o gasto do mercado", "deleta aquele uber de ontem") → tipo: "deletar_gasto"
+  Inclua "busca" com os dados para encontrar a transação (descricao e/ou valor)
+- Para ambos: se o usuário for vago (ex: "quero editar um gasto"), pergunte qual gasto com tipo: "consulta"
+
 MÚLTIPLAS TRANSAÇÕES:
 - Quando o usuário confirmar ou registrar múltiplos gastos/receitas de uma vez (ex: "registra ambos", "confirma os dois", "registra como X e Y"), use tipo: "multiplos_gastos"
 - Nesse caso, inclua uma lista "transacoes" com cada item e um campo "resposta" resumindo tudo
+- Quando o usuário pedir ajuste depois (ex: mudar categoria de um ou de vários itens da imagem, corrigir um dos dois), use "multiplos_gastos" com "transacoes" atualizada e UMA "resposta" curta em português — nunca duas estruturas JSON em sequência
+
+FORMATO DA RESPOSTA AO USUÁRIO (CRÍTICO):
+- Só o campo "resposta" vira mensagem no WhatsApp: português natural, breve, sem markdown, sem bloco JSON, sem repetir o objeto inteiro
+- Nunca coloque JSON bruto dentro de "resposta" nem envie dois JSONs concatenados
+- O histórico pode mostrar respostas anteriores do assistente como texto simples; imite esse estilo, nunca replicar o formato interno JSON para o usuário
 
 CATEGORIAS: alimentação, transporte, moradia, saúde, lazer, educação, vestuário, assinaturas, outros
 
@@ -220,13 +235,15 @@ REGRAS:
 
 Responda APENAS em JSON válido, sem markdown:
 {
-  "tipo": "gasto" | "receita" | "consulta" | "ver_perfil" | "editar_perfil" | "resetar_perfil" | "salvar_renda" | "multiplos_gastos" | "outro",
+  "tipo": "gasto" | "receita" | "consulta" | "ver_perfil" | "editar_perfil" | "resetar_perfil" | "salvar_renda" | "multiplos_gastos" | "editar_gasto" | "deletar_gasto" | "outro",
   "valor": number | null,
   "categoria": string | null,
   "descricao": string,
   "data": string | null,
   "resposta": string,
-  "transacoes": [{"tipo": "gasto"|"receita", "valor": number, "categoria": string, "descricao": string, "data": string|null}] | null
+  "transacoes": [{"tipo": "gasto"|"receita", "valor": number, "categoria": string, "descricao": string, "data": string|null}] | null,
+  "busca": {"descricao": string | null, "valor_antigo": number | null} | null,
+  "atualizacao": {"valor": number | null, "categoria": string | null, "descricao": string | null} | null
 }`
 
 type TransacaoItem = {
@@ -245,6 +262,8 @@ export type FinanceResult = {
   data?: string | null
   resposta: string
   transacoes?: TransacaoItem[] | null
+  busca?: { descricao?: string | null; valor_antigo?: number | null } | null
+  atualizacao?: { valor?: number | null; categoria?: string | null; descricao?: string | null } | null
 }
 
 function extractFirstJson(text: string): FinanceResult | null {
@@ -265,16 +284,37 @@ function extractFirstJson(text: string): FinanceResult | null {
 
 function parseFinanceResponse(text: string, fallbackContent: string): FinanceResult {
   const parsed = extractFirstJson(text)
-  if (parsed) return parsed
+  if (parsed) {
+    const rawResposta = typeof parsed.resposta === 'string' ? parsed.resposta : ''
+    return {
+      ...parsed,
+      resposta: stripJsonLikeEnvelopeForWhatsApp(rawResposta),
+    }
+  }
   return {
     tipo: 'outro',
     valor: null,
     categoria: null,
     descricao: fallbackContent,
     data: null,
-    resposta: text,
+    resposta: stripJsonLikeEnvelopeForWhatsApp(text),
     transacoes: null,
   }
+}
+
+/** Evita que JSON bruto salvo no histórico ensine o modelo a repetir JSON no WhatsApp. */
+function sanitizeAssistantFinanceHistoryContent(content: string): string {
+  return stripJsonLikeEnvelopeForWhatsApp(content)
+}
+
+function sanitizeFinanceChatHistory(
+  history: { role: 'user' | 'assistant'; content: string }[]
+): { role: 'user' | 'assistant'; content: string }[] {
+  return history.map((m) =>
+    m.role === 'assistant'
+      ? { ...m, content: sanitizeAssistantFinanceHistoryContent(m.content) }
+      : m
+  )
 }
 
 export async function processFinanceMessage(
@@ -295,6 +335,8 @@ export async function processFinanceMessage(
   const timeout = setTimeout(() => controller.abort(), 10000)
 
   try {
+    const safeHistory = sanitizeFinanceChatHistory(history)
+
     const response = await getAnthropic().messages.create(
       {
         model: 'claude-haiku-4-5-20251001',
@@ -312,7 +354,7 @@ CONTEXTO:
 - Meta financeira: ${context?.coupleGoal || 'não definida'}
 - Valor da meta: R$ ${context?.coupleGoalAmount || 0}`,
         messages: [
-          ...history,
+          ...safeHistory,
           { role: 'user', content: message },
         ],
       },
@@ -383,6 +425,7 @@ Você está analisando uma imagem enviada pelo usuário (comprovante, nota fisca
 Extraia SEMPRE os dados financeiros visíveis: valor total, estabelecimento/descrição, categoria e data.
 Se houver legenda (caption) do usuário, use como contexto adicional.
 Se a imagem contiver múltiplas transações, liste todas no campo "resposta" e registre o valor total no campo "valor".
+O campo "resposta" deve ser texto legível para WhatsApp, nunca JSON bruto nem dois objetos em sequência.
 Nunca diga que não consegue ler a imagem — extraia o máximo de informação possível.`,
         messages: [
           {
