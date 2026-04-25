@@ -219,12 +219,8 @@ export async function processOnboardingStep(phone: string, message: string, user
           return `Não entendi muito bem 😅 Pode reformular? Qual é a maior meta financeira de vocês como casal? (ex: viagem, reserva de emergência, casa própria)`
         }
 
-        const updates: Record<string, unknown> = {
-          goal_description: goal.descricao,
-          goal_category: goal.categoria,
-          onboarding_step: 2,
-        }
-        await supabase.from('users').update(updates).eq('couple_id', user.couple_id)
+        await supabase.from('users').update({ goal_description: goal.descricao, goal_category: goal.categoria }).eq('couple_id', user.couple_id)
+        await supabase.from('users').update({ onboarding_step: 2 }).eq('phone', phone)
 
         if (goal.categoria === 'reserva_emergencia') {
           return `Ótima escolha! 💪 O ideal é ter 6 meses da renda combinada do casal guardados.\n\nQuanto vocês ganham juntos por mês? Vou calcular o valor ideal! (pode ser aproximado)`
@@ -286,8 +282,8 @@ export async function processOnboardingStep(phone: string, message: string, user
 
         if (user.goal_category === 'reserva_emergencia') {
           const suggestedGoal = value * 6
-          const updates: Record<string, unknown> = { monthly_income: value, onboarding_step: 3 }
-          await supabase.from('users').update(updates).eq('couple_id', user.couple_id)
+          await supabase.from('users').update({ monthly_income: value }).eq('couple_id', user.couple_id)
+          await supabase.from('users').update({ onboarding_step: 3 }).eq('phone', phone)
           const formatted = suggestedGoal.toLocaleString('pt-BR')
           return (
             `Baseado na renda de vocês, o valor ideal da reserva é *R$ ${formatted}*.\n\n` +
@@ -295,8 +291,8 @@ export async function processOnboardingStep(phone: string, message: string, user
           )
         }
 
-        const updates: Record<string, unknown> = { goal_amount: value, onboarding_step: 4 }
-        await supabase.from('users').update(updates).eq('couple_id', user.couple_id)
+        await supabase.from('users').update({ goal_amount: value }).eq('couple_id', user.couple_id)
+        await supabase.from('users').update({ onboarding_step: 4 }).eq('phone', phone)
         return `Anotado! 💪 E quanto vocês querem guardar por mês para chegar nessa meta? (ex: 500)`
       }
 
@@ -333,8 +329,8 @@ export async function processOnboardingStep(phone: string, message: string, user
           ? suggestedGoal
           : (confirmation.valorPersonalizado ?? suggestedGoal)
 
-        const updates: Record<string, unknown> = { goal_amount: finalGoal, onboarding_step: 4 }
-        await supabase.from('users').update(updates).eq('couple_id', user.couple_id)
+        await supabase.from('users').update({ goal_amount: finalGoal }).eq('couple_id', user.couple_id)
+        await supabase.from('users').update({ onboarding_step: 4 }).eq('phone', phone)
         return `Perfeito! 💪 E quanto vocês querem guardar por mês para construir essa reserva? (ex: 500)`
       }
 
@@ -358,12 +354,8 @@ export async function processOnboardingStep(phone: string, message: string, user
           return `Não entendi 😅 Quanto vocês querem guardar por mês? (ex: 500)`
         }
 
-        const updates: Record<string, unknown> = {
-          monthly_savings_goal: value,
-          onboarding_step: 5,
-          onboarding_completed: true,
-        }
-        await supabase.from('users').update(updates).eq('couple_id', user.couple_id)
+        await supabase.from('users').update({ monthly_savings_goal: value, onboarding_completed: true }).eq('couple_id', user.couple_id)
+        await supabase.from('users').update({ onboarding_step: 5 }).eq('phone', phone)
 
         const nick = user.nickname ?? user.name ?? 'você'
         const goalDesc = user.goal_description ?? 'sua meta'
@@ -459,6 +451,11 @@ export function getEditMenu(): string {
 }
 
 export async function processEditChoice(phone: string, choice: string): Promise<string | null> {
+  const lower = choice.trim().toLowerCase()
+  if (/^(cancelar|sair|voltar|não|nao|nada|pronto|ok|tchau|exit)$/.test(lower)) {
+    await supabase.from('users').update({ editing_field: null }).eq('phone', phone)
+    return 'Tudo bem, cancelei a edição. 😊 O que mais posso fazer?'
+  }
   const field = EDIT_FIELDS[choice.trim()]
   if (!field) return null
   await supabase.from('users').update({ editing_field: field.column }).eq('phone', phone)

@@ -224,6 +224,7 @@ export async function handleFinance({
 
   if (result.tipo === TIPO.EDITAR_GASTO) {
     const busca = result.busca
+    let editFound = false
     if (busca?.descricao || busca?.valor_antigo) {
       let query = supabase
         .from('transactions')
@@ -234,6 +235,7 @@ export async function handleFinance({
 
       if (busca.descricao) query = query.ilike('descricao', `%${busca.descricao}%`)
       if (busca.valor_antigo) query = query.eq('valor', busca.valor_antigo)
+      if (busca.data) query = query.eq('data', busca.data)
 
       const { data: found } = await query
       if (found?.length) {
@@ -243,14 +245,19 @@ export async function handleFinance({
         if (result.atualizacao?.descricao) updates.descricao = result.atualizacao.descricao
         if (Object.keys(updates).length) {
           await supabase.from('transactions').update(updates).eq('id', found[0].id)
+          editFound = true
         }
       }
     }
-    return saveAndSend(phone, senderName, message, rawMessage, replyTo, result.resposta, 'edição de gasto')
+    const editResposta = editFound
+      ? result.resposta
+      : 'Não encontrei esse gasto. Tente ser mais específico — ex: "corrige o mercado de R$ 50 para R$ 45" ou informe a data.'
+    return saveAndSend(phone, senderName, message, rawMessage, replyTo, editResposta, 'edição de gasto')
   }
 
   if (result.tipo === TIPO.DELETAR_GASTO) {
     const busca = result.busca
+    let deleteFound = false
     if (busca?.descricao || busca?.valor_antigo) {
       let query = supabase
         .from('transactions')
@@ -261,13 +268,18 @@ export async function handleFinance({
 
       if (busca.descricao) query = query.ilike('descricao', `%${busca.descricao}%`)
       if (busca.valor_antigo) query = query.eq('valor', busca.valor_antigo)
+      if (busca.data) query = query.eq('data', busca.data)
 
       const { data: found } = await query
       if (found?.length) {
         await supabase.from('transactions').delete().eq('id', found[0].id)
+        deleteFound = true
       }
     }
-    return saveAndSend(phone, senderName, message, rawMessage, replyTo, result.resposta, 'exclusão de gasto')
+    const deleteResposta = deleteFound
+      ? result.resposta
+      : 'Não encontrei esse gasto. Tente ser mais específico — ex: "remove o mercado de R$ 50 de ontem".'
+    return saveAndSend(phone, senderName, message, rawMessage, replyTo, deleteResposta, 'exclusão de gasto')
   }
 
   if (result.tipo === TIPO.SALVAR_RENDA && result.valor) {

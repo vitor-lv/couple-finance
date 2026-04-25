@@ -203,9 +203,9 @@ CAPACIDADES ESPECIAIS:
 
 EDIÇÃO E EXCLUSÃO DE GASTOS:
 - Quando o usuário quiser corrigir um gasto (ex: "corrige o mercado de 150 para 120", "mudei a categoria do uber para transporte") → tipo: "editar_gasto"
-  Inclua "busca" com os dados para encontrar a transação (descricao e/ou valor_antigo) e "atualizacao" com os campos a mudar (valor, categoria, descricao)
+  Inclua "busca" com os dados para encontrar a transação (descricao e/ou valor_antigo e/ou data em formato YYYY-MM-DD) e "atualizacao" com os campos a mudar (valor, categoria, descricao)
 - Quando o usuário quiser remover/deletar um gasto (ex: "remove o gasto do mercado", "deleta aquele uber de ontem") → tipo: "deletar_gasto"
-  Inclua "busca" com os dados para encontrar a transação (descricao e/ou valor)
+  Inclua "busca" com os dados para encontrar a transação (descricao e/ou valor e/ou data em formato YYYY-MM-DD)
 - Para ambos: se o usuário for vago (ex: "quero editar um gasto"), pergunte qual gasto com tipo: "consulta"
 
 MÚLTIPLAS TRANSAÇÕES:
@@ -242,7 +242,7 @@ Responda APENAS em JSON válido, sem markdown:
   "data": string | null,
   "resposta": string,
   "transacoes": [{"tipo": "gasto"|"receita", "valor": number, "categoria": string, "descricao": string, "data": string|null}] | null,
-  "busca": {"descricao": string | null, "valor_antigo": number | null} | null,
+  "busca": {"descricao": string | null, "valor_antigo": number | null, "data": string | null} | null,
   "atualizacao": {"valor": number | null, "categoria": string | null, "descricao": string | null} | null
 }`
 
@@ -262,7 +262,7 @@ export type FinanceResult = {
   data?: string | null
   resposta: string
   transacoes?: TransacaoItem[] | null
-  busca?: { descricao?: string | null; valor_antigo?: number | null } | null
+  busca?: { descricao?: string | null; valor_antigo?: number | null; data?: string | null } | null
   atualizacao?: { valor?: number | null; categoria?: string | null; descricao?: string | null } | null
 }
 
