@@ -203,19 +203,19 @@ export async function POST(request: NextRequest) {
           last_attempt_at: new Date().toISOString(),
         })
 
-        if (count >= 10) return NextResponse.json({ status: 'unregistered' })
-
         if (count === 1) {
           await sendTextMessage(replyTo, `Ooi! 👋 Sabe aquela conversa difícil no relacionamento sobre dinheiro?`)
           await sendTextMessage(replyTo, `O Finn resolve isso pra vocês. Dá uma olhada: https://couple-finance-nine.vercel.app/`)
-        } else if (count <= 3) {
-          await sendTextMessage(replyTo, `Oi de novo! Já te falei do cadastro, lembra? 😅`)
-        } else if (count <= 5) {
+        } else if (count === 2) {
+          await sendTextMessage(replyTo, `Ooi de novo! Clica no link ali em cima e se cadastra 😅`)
+        } else if (count === 3) {
           await sendTextMessage(replyTo, `Ok, agora você tá só me testando 👀`)
-        } else if (count <= 7) {
-          await sendTextMessage(replyTo, `Sério, eu não vou desbloquear nada se você não se cadastrar 🤖`)
-        } else if (count <= 9) {
+        } else if (count === 4) {
+          await sendTextMessage(replyTo, `Sério, nada acontece se você não se cadastrar 🤖`)
+        } else if (count === 5) {
           await sendTextMessage(replyTo, `Última tentativa: https://couple-finance-nine.vercel.app/ — depois disso eu vou dormir 😴`)
+        } else if (count === 6) {
+          await sendTextMessage(replyTo, `Cansei. Boa noite. 💤`)
         }
 
         return NextResponse.json({ status: 'unregistered' })
