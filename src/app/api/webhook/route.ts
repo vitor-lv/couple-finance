@@ -189,8 +189,35 @@ export async function POST(request: NextRequest) {
 
     if (!user) {
       if (!isGroup) {
-        await sendTextMessage(replyTo, `Ooi! 👋 Sabe aquela conversa difícil no relacionamento sobre dinheiro?`)
-        await sendTextMessage(replyTo, `O Finn resolve isso pra vocês. Dá uma olhada: https://couple-finance-nine.vercel.app/`)
+        const { data: contact } = await supabase
+          .from('unregistered_contacts')
+          .select('attempt_count')
+          .eq('phone', userPhone)
+          .maybeSingle()
+
+        const count = (contact?.attempt_count ?? 0) + 1
+
+        await supabase.from('unregistered_contacts').upsert({
+          phone: userPhone,
+          attempt_count: count,
+          last_attempt_at: new Date().toISOString(),
+        })
+
+        if (count >= 10) return NextResponse.json({ status: 'unregistered' })
+
+        if (count === 1) {
+          await sendTextMessage(replyTo, `Ooi! 👋 Sabe aquela conversa difícil no relacionamento sobre dinheiro?`)
+          await sendTextMessage(replyTo, `O Finn resolve isso pra vocês. Dá uma olhada: https://couple-finance-nine.vercel.app/`)
+        } else if (count <= 3) {
+          await sendTextMessage(replyTo, `Oi de novo! Já te falei do cadastro, lembra? 😅`)
+        } else if (count <= 5) {
+          await sendTextMessage(replyTo, `Ok, agora você tá só me testando 👀`)
+        } else if (count <= 7) {
+          await sendTextMessage(replyTo, `Sério, eu não vou desbloquear nada se você não se cadastrar 🤖`)
+        } else if (count <= 9) {
+          await sendTextMessage(replyTo, `Última tentativa: https://couple-finance-nine.vercel.app/ — depois disso eu vou dormir 😴`)
+        }
+
         return NextResponse.json({ status: 'unregistered' })
       }
       const { user: newUser, response } = await handleNewUser({
