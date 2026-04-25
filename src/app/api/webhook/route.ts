@@ -188,6 +188,10 @@ export async function POST(request: NextRequest) {
     let { data: user } = await supabase.from('users').select('*').eq('phone', userPhone).maybeSingle()
 
     if (!user) {
+      if (!isGroup) {
+        await sendTextMessage(replyTo, `Oi! 👋 Parece que você ainda não tem cadastro no Finn.\n\nPara começar, acesse: https://couple-finance-nine.vercel.app/`)
+        return NextResponse.json({ status: 'unregistered' })
+      }
       const { user: newUser, response } = await handleNewUser({
         userPhone, senderName, message, rawMessage, replyTo, isGroup, groupId,
       })
