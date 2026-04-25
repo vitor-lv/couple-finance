@@ -399,7 +399,7 @@ export async function interpretEditValue(
     const match = text.match(/\{[\s\S]*\}/)
     if (match) {
       const parsed = JSON.parse(match[0])
-      if (parsed.value) return { value: parsed.value, display: parsed.display ?? `R$ ${parsed.value}` }
+      if (parsed.value != null) return { value: parsed.value, display: parsed.display ?? `R$ ${parsed.value}` }
     }
   } catch { /* fallback */ } finally {
     clearTimeout(timeout)

@@ -15,6 +15,10 @@ import {
 import { insertUserMessage, insertAssistantMessage, saveAndSend, saveAndReply } from './messages'
 import { TIPO } from '@/lib/constants'
 
+function escapeLike(str: string): string {
+  return str.replace(/[%_\\]/g, ' ').trim()
+}
+
 // ── New User ──────────────────────────────────────────────────────────────────
 
 interface NewUserContext {
@@ -68,7 +72,7 @@ export async function handleNewUser({
     const response = await saveAndSend(
       userPhone, senderName, message, rawMessage, replyTo, welcomeMsg, 'boas-vindas'
     )
-    return { user: newUser as User, response }
+    return { user: newUser ?? null, response }
   }
 
   await supabase.from('users').insert({
@@ -79,7 +83,7 @@ export async function handleNewUser({
     chat_mode: 'individual',
   })
   const { data: newUser } = await supabase.from('users').select('*').eq('phone', userPhone).maybeSingle()
-  return { user: newUser as User, response: null }
+  return { user: newUser ?? null, response: null }
 }
 
 // ── Editing ───────────────────────────────────────────────────────────────────
@@ -96,9 +100,19 @@ interface EditingContext {
 export async function handleEditing({
   phone, senderName, message, rawMessage, replyTo, editingField,
 }: EditingContext): Promise<NextResponse> {
-  const editChoice = await processEditChoice(phone, message.trim())
-  if (editChoice) {
-    return saveAndSend(phone, senderName, message, rawMessage, replyTo, editChoice, 'resposta de edição')
+  // Modo seleção: usuário está escolhendo qual campo editar no menu
+  if (editingField === 'selecting_field') {
+    const editChoice = await processEditChoice(phone, message.trim())
+    if (editChoice) {
+      return saveAndSend(phone, senderName, message, rawMessage, replyTo, editChoice, 'resposta de edição')
+    }
+    return saveAndSend(phone, senderName, message, rawMessage, replyTo, getEditMenu(), 'menu de edição')
+  }
+
+  // Modo valor: usuário está digitando o novo valor — checar cancelamento antes
+  if (/^(cancelar|sair|voltar|não|nao|nada|tchau|exit)$/i.test(message.trim())) {
+    await supabase.from('users').update({ editing_field: null }).eq('phone', phone)
+    return saveAndSend(phone, senderName, message, rawMessage, replyTo, 'Tudo bem, cancelei a edição. 😊 O que mais posso fazer?', 'cancelamento de edição')
   }
 
   const confirmation = await processEditValue(phone, message, editingField)
@@ -174,6 +188,7 @@ export async function handleFinance({
 
   const chatHistory = (history ?? [])
     .reverse()
+    .filter((m: { role: string; content: string }) => m.role === 'user' || m.role === 'assistant')
     .map((m: { role: string; content: string }) => ({
       role: m.role as 'user' | 'assistant',
       content: m.content,
@@ -196,6 +211,7 @@ export async function handleFinance({
   }
 
   if (result.tipo === TIPO.EDITAR_PERFIL) {
+    await supabase.from('users').update({ editing_field: 'selecting_field' }).eq('phone', phone)
     const menu = getEditMenu()
     return saveAndSend(phone, senderName, message, rawMessage, replyTo, menu, 'menu de edição')
   }
@@ -233,11 +249,13 @@ export async function handleFinance({
         .order('created_at', { ascending: false })
         .limit(1)
 
-      if (busca.descricao) query = query.ilike('descricao', `%${busca.descricao}%`)
+      const safeDesc = busca.descricao ? escapeLike(busca.descricao) : null
+      if (safeDesc) query = query.ilike('descricao', `%${safeDesc}%`)
       if (busca.valor_antigo) query = query.eq('valor', busca.valor_antigo)
       if (busca.data) query = query.eq('data', busca.data)
 
-      const { data: found } = await query
+      const { data: found, error: editQueryError } = await query
+      if (editQueryError) console.error('❌ Erro na busca para editar gasto:', editQueryError.message)
       if (found?.length) {
         const updates: Record<string, unknown> = {}
         if (result.atualizacao?.valor) updates.valor = result.atualizacao.valor
@@ -266,11 +284,13 @@ export async function handleFinance({
         .order('created_at', { ascending: false })
         .limit(1)
 
-      if (busca.descricao) query = query.ilike('descricao', `%${busca.descricao}%`)
+      const safeDescDel = busca.descricao ? escapeLike(busca.descricao) : null
+      if (safeDescDel) query = query.ilike('descricao', `%${safeDescDel}%`)
       if (busca.valor_antigo) query = query.eq('valor', busca.valor_antigo)
       if (busca.data) query = query.eq('data', busca.data)
 
-      const { data: found } = await query
+      const { data: found, error: delQueryError } = await query
+      if (delQueryError) console.error('❌ Erro na busca para deletar gasto:', delQueryError.message)
       if (found?.length) {
         await supabase.from('transactions').delete().eq('id', found[0].id)
         deleteFound = true

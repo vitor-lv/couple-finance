@@ -82,10 +82,11 @@ function verifyWebhookSignature(
     .digest('hex')
 
   const received = normalizeSignature(signature)
-  const expectedBuffer = Buffer.from(expected, 'hex')
-  const receivedBuffer = Buffer.from(received, 'hex')
-  if (expectedBuffer.length !== receivedBuffer.length) return false
-  return timingSafeEqual(expectedBuffer, receivedBuffer)
+  // Normaliza ambos para 32 bytes via HMAC antes de comparar — evita timing leak no check de tamanho
+  const normKey = Buffer.from('timing-safe-norm')
+  const expectedNorm = createHmac('sha256', normKey).update(expected).digest()
+  const receivedNorm = createHmac('sha256', normKey).update(received).digest()
+  return timingSafeEqual(expectedNorm, receivedNorm)
 }
 
 export async function POST(request: NextRequest) {

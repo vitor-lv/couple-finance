@@ -22,7 +22,10 @@ export async function insertUserMessage(
   })
 
   if (!error) return true
-  if (error.code === DUPLICATE_KEY_ERROR_CODE) return false
+  if (error.code === DUPLICATE_KEY_ERROR_CODE) {
+    console.log(`⚠️ Mensagem duplicada ignorada: phone=${phone}`)
+    return false
+  }
   throw new Error(`Erro ao salvar mensagem do usuário: ${error.message}`)
 }
 
