@@ -42,5 +42,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Nenhum usuário encontrado', phone }, { status: 404 })
   }
 
-  return NextResponse.json({ ok: true, updated: updated.map(u => u.phone) })
+  const phones = updated.map(u => u.phone)
+  const { error: txError } = await supabase.from('transactions').delete().in('phone', phones)
+  if (txError) {
+    return NextResponse.json({ error: txError.message }, { status: 500 })
+  }
+
+  const { error: msgError } = await supabase.from('messages').delete().in('phone', phones)
+  if (msgError) {
+    return NextResponse.json({ error: msgError.message }, { status: 500 })
+  }
+
+  return NextResponse.json({ ok: true, updated: phones })
 }
