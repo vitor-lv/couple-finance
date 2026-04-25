@@ -189,7 +189,7 @@ export async function POST(request: NextRequest) {
 
     if (!user) {
       if (!isGroup) {
-        await sendTextMessage(replyTo, `Oi! 👋 Sabe aquela conversa difícil sobre dinheiro com o parceiro?`)
+        await sendTextMessage(replyTo, `Ooi! 👋 Sabe aquela conversa difícil no relacionamento sobre dinheiro?`)
         await sendTextMessage(replyTo, `O Finn resolve isso pra vocês. Dá uma olhada: https://couple-finance-nine.vercel.app/`)
         return NextResponse.json({ status: 'unregistered' })
       }
