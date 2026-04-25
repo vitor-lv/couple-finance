@@ -189,7 +189,7 @@ export async function POST(request: NextRequest) {
 
     if (!user) {
       if (!isGroup) {
-        await sendTextMessage(replyTo, `Oi! 👋 Parece que você ainda não tem cadastro no Finn.\n\nPara começar, acesse: https://couple-finance-nine.vercel.app/`)
+        await sendTextMessage(replyTo, `Oi! 👋 Sabe aquela conversa difícil sobre dinheiro com o parceiro? O Finn resolve isso pra vocês. Dá uma olhada: https://couple-finance-nine.vercel.app/`)
         return NextResponse.json({ status: 'unregistered' })
       }
       const { user: newUser, response } = await handleNewUser({
